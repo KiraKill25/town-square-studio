@@ -176,12 +176,25 @@ function DistributionPage() {
         >
           {/* Role artwork with reveal animation */}
           <div className="relative aspect-square overflow-hidden">
-            <img
-              key={revealKey}
-              src={roleImage(role!.id)}
-              alt={tr(role!.id).name}
-              className="animate-role-card-reveal h-full w-full object-cover"
-            />
+            {role!.videoUrl ? (
+              <video
+                key={revealKey}
+                src={role!.videoUrl}
+                aria-label={tr(role!.id).name}
+                autoPlay
+                playsInline
+                muted
+                preload="auto"
+                className="animate-role-card-reveal h-full w-full object-cover"
+              />
+            ) : (
+              <img
+                key={revealKey}
+                src={roleImage(role!.id)}
+                alt={tr(role!.id).name}
+                className="animate-role-card-reveal h-full w-full object-cover"
+              />
+            )}
             <div className="absolute inset-0 bg-gradient-to-t from-card via-card/30 to-transparent" />
             {/* Neon shimmer overlay that fades after the animation */}
             <div
