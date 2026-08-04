@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
-import videoAsset from "@/assets/game-master.mp4.asset.json";
+
+const VIDEO_URL = "/media/game-master.mp4";
 
 export function NarratorCard({
   title = "Le Meneur du Jeu",
@@ -38,7 +39,7 @@ export function NarratorCard({
       <div className="relative aspect-[16/10] overflow-hidden">
         <video
           ref={ref}
-          src={videoAsset.url}
+          src={VIDEO_URL}
           aria-label="Le meneur du jeu, conteur masqué au grimoire lumineux"
           autoPlay
           playsInline

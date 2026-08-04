@@ -19,21 +19,25 @@ const images = import.meta.glob("../assets/roles/*.jpg", {
   import: "default",
 }) as Record<string, string>;
 
-const videos = import.meta.glob("../assets/roles-video/*.mp4.asset.json", {
-  eager: true,
-  import: "default",
-}) as Record<string, { url: string }>;
-
 export function roleImage(id: string): string {
   const key = Object.keys(images).find((k) => k.endsWith(`/${id}.jpg`));
   return key ? images[key] : "";
 }
 
 export function roleVideo(id: string): string | undefined {
-  const key = Object.keys(videos).find((k) =>
-    k.endsWith(`/${id}.mp4.asset.json`),
-  );
-  return key ? videos[key].url : undefined;
+  const availableVideos = new Set([
+    "ancien",
+    "ange",
+    "corbeau",
+    "geolier",
+    "idiot-du-village",
+    "juge",
+    "mime",
+    "salvateur",
+    "sorciere",
+    "voyante",
+  ]);
+  return availableVideos.has(id) ? `/media/roles/${id}.mp4` : undefined;
 }
 
 

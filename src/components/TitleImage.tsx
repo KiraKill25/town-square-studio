@@ -1,7 +1,7 @@
 import { motion } from "framer-motion";
-import titleAsset from "@/assets/title-mourads-ville.png.asset.json";
 
 const TEXT = "Mourad's Ville";
+const TITLE_URL = "/media/title-mourads-ville.png";
 
 const IMG =
   "absolute top-0 left-0 block w-full mix-blend-screen pointer-events-none";
@@ -21,7 +21,7 @@ export function TitleImage() {
         style={{ aspectRatio: "1243 / 420" }}
       >
         <img
-          src={titleAsset.url}
+          src={TITLE_URL}
           alt=""
           width={1243}
           height={1243}
@@ -30,7 +30,7 @@ export function TitleImage() {
         />
         {/* Halo néon pulsé — uniquement autour de « MOURAD'S » */}
         <motion.img
-          src={titleAsset.url}
+          src={TITLE_URL}
           alt=""
           width={1243}
           height={1243}

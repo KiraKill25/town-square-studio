@@ -1,6 +1,7 @@
 import { motion } from "framer-motion";
 import { useEffect, useRef } from "react";
-import videoAsset from "@/assets/logo-video.mp4.asset.json";
+
+const VIDEO_URL = "/media/logo-video.mp4";
 
 /**
  * Logo vidéo interactif : lecture unique avec son, gel sur la dernière image,
@@ -47,7 +48,7 @@ export function VideoLogo({ label }: { label: string }) {
       />
       <video
         ref={ref}
-        src={videoAsset.url}
+        src={VIDEO_URL}
         aria-label={label}
         autoPlay
         playsInline
