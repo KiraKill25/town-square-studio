@@ -2,27 +2,41 @@ import { useEffect, useRef, useState } from "react";
 import { Info, X } from "lucide-react";
 import { ROLE_BY_ID, roleImage, type RoleDef } from "@/data/roles";
 import { useI18n } from "@/lib/i18n";
+import { useMuted } from "@/hooks/use-muted";
 
 function RoleVideo({ src, alt }: { src: string; alt: string }) {
   const ref = useRef<HTMLVideoElement>(null);
+  const muted = useMuted();
 
+  // Sync avec l'état global de son + repli si l'autoplay non muté est bloqué
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
+    el.muted = muted;
     el.play().catch(() => {
-      // Autoplay non muté bloqué → repli muet, puis son au 1er clic
       el.muted = true;
-      el.play().catch(() => {
-        el.pause();
-        el.currentTime = 0;
-      });
+      el.play().catch(() => {});
     });
-  }, []);
+  }, [muted, src]);
+
+  // Si l'autoplay non muté est bloqué : son au 1er geste de l'utilisateur
+  useEffect(() => {
+    if (muted) return;
+    const unlock = () => {
+      const el = ref.current;
+      if (el && el.muted) {
+        el.muted = false;
+        void el.play().catch(() => {});
+      }
+    };
+    window.addEventListener("pointerdown", unlock, { once: true });
+    return () => window.removeEventListener("pointerdown", unlock);
+  }, [muted]);
 
   const replay = () => {
     const el = ref.current;
     if (!el) return;
-    el.muted = false;
+    el.muted = muted;
     el.currentTime = 0;
     void el.play().catch(() => {});
   };
@@ -34,12 +48,14 @@ function RoleVideo({ src, alt }: { src: string; alt: string }) {
       aria-label={alt}
       autoPlay
       playsInline
+      muted={muted}
       preload="auto"
       onClick={replay}
       className="h-full w-full cursor-pointer object-cover"
     />
   );
 }
+
 
 
 export function RoleCard({
