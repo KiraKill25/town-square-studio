@@ -4,8 +4,6 @@ import {
   Link,
   createRootRouteWithContext,
   useRouter,
-  HeadContent,
-  Scripts,
 } from "@tanstack/react-router";
 import { useEffect, type ReactNode } from "react";
 
@@ -84,29 +82,8 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
       { title: "Mourad's Ville" },
-      {
-        name: "description",
-        content:
-          "Meneur de jeu numérique pour Loup-Garou : rôles illustrés, moteur de nuit et vote du village.",
-      },
-      { property: "og:title", content: "Mourad's Ville" },
-      {
-        property: "og:description",
-        content:
-          "Meneur de jeu numérique pour Loup-Garou : rôles illustrés, moteur de nuit et vote du village.",
-      },
-      { property: "og:type", content: "website" },
-      { name: "twitter:card", content: "summary_large_image" },
-      { name: "twitter:title", content: "Mourad's Ville" },
-      { name: "twitter:description", content: "Meneur de jeu numérique pour Loup-Garou : rôles illustrés, moteur de nuit et vote du village." },
-      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/8b7b3f33-f48c-4e89-bc07-dde31a427789/id-preview-f0ec2dcc--74030ee1-8ec9-4852-9a00-03a10048caf9.lovable.app-1785758711610.png" },
-      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/8b7b3f33-f48c-4e89-bc07-dde31a427789/id-preview-f0ec2dcc--74030ee1-8ec9-4852-9a00-03a10048caf9.lovable.app-1785758711610.png" },
     ],
-    links: [
-      { rel: "stylesheet", href: appCss },
-      { rel: "icon", href: "/favicon.png", type: "image/png" },
-      { rel: "manifest", href: "/manifest.json" },
-    ],
+    links: [{ rel: "stylesheet", href: appCss }],
   }),
   shellComponent: RootShell,
   component: RootComponent,
@@ -115,22 +92,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 });
 
 function RootShell({ children }: { children: ReactNode }) {
-  // Prevent rendering <html> or <body> tags inside client-side #root element:
-  if (typeof window !== "undefined") {
-    return <>{children}</>;
-  }
-
-  return (
-    <html lang="fr">
-      <head>
-        <HeadContent />
-      </head>
-      <body>
-        {children}
-        <Scripts />
-      </body>
-    </html>
-  );
+  return <>{children}</>;
 }
 
 function RootComponent() {
@@ -148,7 +110,7 @@ function RootComponent() {
     <QueryClientProvider client={queryClient}>
       <I18nProvider>
         <LandscapeNotice />
-        <div className="landscape-hide">
+        <div className="landscape-hide min-h-screen">
           <Outlet />
         </div>
       </I18nProvider>
