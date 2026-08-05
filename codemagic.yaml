@@ -9,36 +9,28 @@ workflows:
     scripts:
       - name: STEP 1 - Install Dependencies
         script: npm install --legacy-peer-deps
-      - name: STEP 2 - Build Web App & Capacitor Sync
+      - name: STEP 2 - Build & Prepare Static Assets
         script: |
+          # Reset any modified repository files
           git checkout -- . || true
 
+          # Build TanStack Start / Vite app
           npm run build || true
 
-          cat << 'EOF' > prepare-dist.cjs
+          cat << 'EOF' > copy-dist.cjs
           const fs = require("fs");
           const path = require("path");
 
           const distDir = path.join(process.cwd(), "dist");
           fs.mkdirSync(distDir, { recursive: true });
 
+          // Copy Nitro static output
           const outputPublic = path.join(process.cwd(), ".output", "public");
           if (fs.existsSync(outputPublic)) {
             fs.cpSync(outputPublic, distDir, { recursive: true });
           }
 
-          const buildAssets = path.join(distDir, "_build", "assets");
-          const assetsDir = path.join(distDir, "assets");
-          fs.mkdirSync(assetsDir, { recursive: true });
-          fs.mkdirSync(buildAssets, { recursive: true });
-
-          if (fs.existsSync(buildAssets)) {
-            fs.cpSync(buildAssets, assetsDir, { recursive: true });
-          }
-          if (fs.existsSync(assetsDir)) {
-            fs.cpSync(assetsDir, buildAssets, { recursive: true });
-          }
-
+          // Ensure index.html exists
           let indexPath = path.join(distDir, "index.html");
           if (!fs.existsSync(indexPath)) {
             if (fs.existsSync(path.join(distDir, "200.html"))) {
@@ -48,121 +40,32 @@ workflows:
             }
           }
 
-          if (!fs.existsSync(indexPath)) {
-            const files = fs.readdirSync(assetsDir);
-            const jsFiles = files.filter(f => f.endsWith(".js"));
-            const cssFiles = files.filter(f => f.endsWith(".css"));
-
-            let entryJs = jsFiles.find(f => f.startsWith("client") || f.startsWith("entry-client"));
-            if (!entryJs) entryJs = jsFiles.find(f => f.startsWith("main") || f.startsWith("app") || f.startsWith("entry"));
-            if (!entryJs) entryJs = jsFiles.find(f => !f.startsWith("index-") && !f.startsWith("route-"));
-
-            const cssTags = cssFiles.map(f => `<link rel="stylesheet" href="./assets/${f}">`).join("\n");
-            const jsTag = entryJs ? `<script type="module" src="./assets/${entryJs}"></script>` : "";
-
-            const fallbackHtml = `<!DOCTYPE html>
-          <html lang="en">
-            <head>
-              <meta charset="UTF-8" />
-              <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-              <title>Town Square</title>
-              ${cssTags}
-            </head>
-            <body>
-              <div id="root"></div>
-              <div id="app"></div>
-              <div id="__next"></div>
-              ${jsTag}
-            </body>
-          </html>`;
-            fs.writeFileSync(indexPath, fallbackHtml);
+          // Ensure assets directories are aligned
+          const buildAssets = path.join(distDir, "_build", "assets");
+          const assetsDir = path.join(distDir, "assets");
+          if (fs.existsSync(buildAssets)) {
+            fs.mkdirSync(assetsDir, { recursive: true });
+            fs.cpSync(buildAssets, assetsDir, { recursive: true });
+          }
+          if (fs.existsSync(assetsDir)) {
+            fs.mkdirSync(buildAssets, { recursive: true });
+            fs.cpSync(assetsDir, buildAssets, { recursive: true });
           }
 
-          let html = fs.readFileSync(indexPath, "utf8");
-
-          // Convert absolute paths to relative paths for Capacitor webview
-          html = html.replace(/src="\/_build\//g, 'src="./_build/')
-                    .replace(/href="\/_build\//g, 'href="./_build/')
-                    .replace(/src="\/assets\//g, 'src="./assets/')
-                    .replace(/href="\/assets\//g, 'href="./assets/');
-
-          const diagnosticScript = `
-          <script>
-            if (window.location.pathname.endsWith('/index.html') || window.location.pathname.endsWith('index.html')) {
-              window.history.replaceState(null, '', '/');
-            }
-
-            window.global = window;
-            window.process = window.process || { env: { NODE_ENV: "production" } };
-            window.__VINXI__ = window.__VINXI__ || { assets: {} };
-            window.__manifest__ = window.__manifest__ || {};
-            window.__TSR__ = window.__TSR__ || {};
-            window.__TSR_ROUTER__ = window.__TSR_ROUTER__ || {};
-            window.__TSR_DEHYDRATED__ = window.__TSR_DEHYDRATED__ || {};
-            window.__nitro__ = window.__nitro__ || {};
-
-            var origFetch = window.fetch;
-            if (origFetch) {
-              window.fetch = function() {
-                return origFetch.apply(this, arguments).catch(function(err) {
-                  console.warn('[Fetch Warning]', err);
-                  return new Response(JSON.stringify({}), { status: 200, headers: { 'Content-Type': 'application/json' } });
-                });
-              };
-            }
-
-            function showOverlayError(title, message) {
-              var d = document.getElementById("debug-error-overlay");
-              if (!d) {
-                d = document.createElement("div");
-                d.id = "debug-error-overlay";
-                d.style.cssText = "position:fixed;top:0;left:0;width:100%;height:100%;z-index:99999;background:#111;color:#ff5555;padding:16px;font-family:monospace;font-size:11px;overflow:scroll;white-space:pre-wrap;word-break:break-all;";
-                document.body.appendChild(d);
-              }
-              d.innerText += "\\n[" + title + "]\\n" + message + "\\n";
-            }
-
-            window.addEventListener("error", function(e) {
-              showOverlayError("APP RUNTIME ERROR", e.message + "\\nFile: " + e.filename + ":" + e.lineno + "\\n" + (e.error ? e.error.stack : ""));
-            });
-
-            window.addEventListener("unhandledrejection", function(e) {
-              var reason = e.reason ? (e.reason.stack || e.reason) : e;
-              showOverlayError("UNHANDLED REJECTION", reason);
-            });
-
-            var origConsoleError = console.error;
-            console.error = function() {
-              origConsoleError.apply(console, arguments);
-              var msg = Array.prototype.slice.call(arguments).map(function(a) {
-                return typeof a === "object" ? JSON.stringify(a) : a;
-              }).join(" ");
-              if (!msg.includes("Warning:") && !msg.includes("React DevTools")) {
-                showOverlayError("CONSOLE ERROR", msg);
-              }
-            };
-          </script>
-          `;
-
-          if (html.includes("<head>")) {
-            html = html.replace("<head>", "<head>" + diagnosticScript);
-          } else {
-            html = diagnosticScript + html;
-          }
-
-          fs.writeFileSync(indexPath, html);
-          console.log("Successfully prepared dist/index.html!");
+          console.log("Static distribution directory successfully prepared!");
           EOF
 
-          node prepare-dist.cjs
+          node copy-dist.cjs
 
+          # Configure Capacitor for Capacitor Web View
           cat << EOF > capacitor.config.json
           {
             "appId": "com.townsquare.app",
             "appName": "Town Square",
             "webDir": "dist",
             "server": {
-              "androidScheme": "https"
+              "androidScheme": "https",
+              "cleartext": true
             }
           }
           EOF
