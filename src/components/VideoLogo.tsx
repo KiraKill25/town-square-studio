@@ -1,7 +1,7 @@
 import { motion } from "framer-motion";
 import { useEffect, useRef } from "react";
 
-const VIDEO_URL = "/media/logo-video.mp4";
+const VIDEO_URL = "./media/logo-video.mp4";
 
 /**
  * Logo vidéo interactif : lecture unique avec son, gel sur la dernière image,
@@ -13,22 +13,27 @@ export function VideoLogo({ label }: { label: string }) {
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    el.play().catch(() => {
-      // Autoplay non muté bloqué → repli silencieux sur la 1re image
-      el.muted = true;
-      el.play().catch(() => {
-        el.pause();
-        el.currentTime = 0;
+    
+    // Always start muted for webview autoplay compliance
+    el.muted = true;
+    const playPromise = el.play();
+    if (playPromise !== undefined) {
+      playPromise.catch((e) => {
+        console.warn("Autoplay muted fallback triggered:", e);
       });
-    });
+    }
   }, []);
 
   const replay = () => {
     const el = ref.current;
     if (!el) return;
-    el.muted = false;
-    el.currentTime = 0;
-    void el.play().catch(() => {});
+    try {
+      el.muted = false;
+      el.currentTime = 0;
+      void el.play().catch(() => {});
+    } catch (e) {
+      console.warn("Replay trigger warning:", e);
+    }
   };
 
   return (
@@ -50,9 +55,9 @@ export function VideoLogo({ label }: { label: string }) {
         ref={ref}
         src={VIDEO_URL}
         aria-label={label}
-        autoPlay
+        muted
         playsInline
-        preload="auto"
+        preload="metadata"
         onClick={replay}
         className="relative block size-full cursor-pointer rounded-full object-cover"
       />
