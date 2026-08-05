@@ -41,29 +41,8 @@ workflows:
             cssFiles = files.filter(f => f.endsWith(".css"));
           }
 
-          // Prioritize client-*.js or entry-client-*.js, exclude route chunks (index-*.js)
-          let entryJs = jsFiles.find(f => f.startsWith("client") || f.startsWith("entry-client"));
-          if (!entryJs) {
-            entryJs = jsFiles.find(f => f.startsWith("main") || f.startsWith("app") || f.startsWith("entry"));
-          }
-          if (!entryJs) {
-            entryJs = jsFiles.find(f => {
-              if (f.startsWith("index-") || f.startsWith("route-")) return false;
-              const content = fs.readFileSync(path.join(assetsDir, f), "utf8");
-              return content.includes("createRoot") || content.includes("hydrateRoot") || content.includes("ReactDOM");
-            });
-          }
-          if (!entryJs) {
-            entryJs = jsFiles.find(f => !f.startsWith("index-") && !f.startsWith("route-"));
-          }
-          if (!entryJs) {
-            entryJs = jsFiles[0] || "";
-          }
-
-          console.log("Selected Entry JS File:", entryJs);
-
           const cssTags = cssFiles.map(f => `<link rel="stylesheet" href="./assets/${f}">`).join("\n    ");
-          const jsTag = entryJs ? `<script type="module" src="./assets/${entryJs}"></script>` : "";
+          const jsTags = jsFiles.map(f => `<script type="module" src="./assets/${f}"></script>`).join("\n    ");
 
           const htmlContent = `<!DOCTYPE html>
           <html lang="en">
@@ -73,6 +52,11 @@ workflows:
               <title>Town Square</title>
               ${cssTags}
               <script>
+                // Reset URL path so TanStack Router matches the root '/' route instead of '/index.html'
+                if (window.location.pathname.endsWith('/index.html') || window.location.pathname.endsWith('index.html')) {
+                  window.history.replaceState(null, '', '/');
+                }
+
                 window.global = window;
                 window.process = window.process || { env: { NODE_ENV: "production" } };
                 window.__VINXI__ = window.__VINXI__ || { assets: {} };
@@ -100,7 +84,8 @@ workflows:
             <body>
               <div id="root"></div>
               <div id="app"></div>
-              ${jsTag}
+              <div id="__next"></div>
+              ${jsTags}
             </body>
           </html>`;
 
