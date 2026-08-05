@@ -6,14 +6,14 @@ workflows:
     scripts:
       - name: STEP 1 - Install Dependencies
         script: npm install --legacy-peer-deps
-      - name: STEP 2 - Build Web App
-        script: npm run build
-      - name: STEP 3 - Sync Android
+      - name: STEP 2 - Build Web App & Sync Capacitor
         script: |
+          mkdir -p dist
+          npm run build
           ./node_modules/.bin/cap init "Town Square" "com.townsquare.app" --web-dir "dist" || true
           ./node_modules/.bin/cap add android || true
           ./node_modules/.bin/cap sync android
-      - name: STEP 4 - Assemble APK
+      - name: STEP 3 - Assemble APK
         script: |
           cd android
           chmod +x gradlew
