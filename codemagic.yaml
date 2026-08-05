@@ -28,6 +28,50 @@ workflows:
           const distDir = path.join(process.cwd(), "dist");
           const assetsDir = path.join(distDir, "assets");
 
+          let indexPath = path.join(distDir, "index.html");
+          if (!fs.existsSync(indexPath)) {
+            if (fs.existsSync(path.join(distDir, "200.html"))) {
+              fs.copyFileSync(path.join(distDir, "200.html"), indexPath);
+            } else if (fs.existsSync(path.join(distDir, "404.html"))) {
+              fs.copyFileSync(path.join(distDir, "404.html"), indexPath);
+            }
+          }
+
+          let jsFiles = [];
+          let cssFiles = [];
+
+          if (fs.existsSync(assetsDir)) {
+            const files = fs.readdirSync(assetsDir);
+            jsFiles = files.filter(f => f.endsWith(".js"));
+            cssFiles = files.filter(f => f.endsWith(".css"));
+          }
+
+          // Smart Entry Detection: find the script that initializes React/App root
+          let entryJs = "";
+          for (const f of jsFiles) {
+            const content = fs.readFileSync(path.join(assetsDir, f), "utf8");
+            if (content.includes("createRoot") || content.includes("hydrateRoot") || content.includes("ReactDOM") || content.includes("$Router") || content.includes("mount(")) {
+              entryJs = f;
+              break;
+            }
+          }
+
+          if (!entryJs) {
+            const priorityPatterns = [
+              f => f.startsWith("client") || f.startsWith("entry-client"),
+              f => f.startsWith("main"),
+              f => f.startsWith("entry"),
+              f => f.startsWith("app"),
+              f => f.startsWith("root"),
+              f => !f.startsWith("index-") && !f.startsWith("route-"),
+              f => true
+            ];
+            for (const pattern of priorityPatterns) {
+              const match = jsFiles.find(pattern);
+              if (match) { entryJs = match; break; }
+            }
+          }
+
           const polyfillScript = `
           <script>
             window.global = window;
@@ -55,11 +99,6 @@ workflows:
           </script>
           `;
 
-          let indexPath = path.join(distDir, "index.html");
-          if (!fs.existsSync(indexPath) && fs.existsSync(path.join(distDir, "200.html"))) {
-            fs.copyFileSync(path.join(distDir, "200.html"), indexPath);
-          }
-
           if (fs.existsSync(indexPath)) {
             let html = fs.readFileSync(indexPath, "utf8");
             if (html.includes("<head>")) {
@@ -69,16 +108,6 @@ workflows:
             }
             fs.writeFileSync(indexPath, html);
           } else {
-            let jsFiles = [];
-            let cssFiles = [];
-
-            if (fs.existsSync(assetsDir)) {
-              const files = fs.readdirSync(assetsDir);
-              jsFiles = files.filter(f => f.endsWith(".js"));
-              cssFiles = files.filter(f => f.endsWith(".css"));
-            }
-
-            const entryJs = jsFiles.find(f => f.startsWith("index-") || f.startsWith("main-") || f.startsWith("client-")) || jsFiles[0] || "";
             const jsTag = entryJs ? `<script type="module" src="./assets/${entryJs}"></script>` : "";
             const cssTags = cssFiles.map(f => `<link rel="stylesheet" href="./assets/${f}">`).join("\n    ");
 
