@@ -8,17 +8,12 @@ workflows:
         script: npm install --legacy-peer-deps
       - name: STEP 2 - Build Web App & Sync Capacitor
         script: |
-          npm run build || true
+          npx vite build || npm run build || true
           mkdir -p dist
-          INDEX_PATH=$(find . -maxdepth 4 -name "index.html" -not -path "*/node_modules/*" -not -path "*/android/*" -not -path "./dist/*" | head -n 1)
-          if [ -n "$INDEX_PATH" ]; then
-            BUILD_DIR=$(dirname "$INDEX_PATH")
-            echo "Found index.html in: $BUILD_DIR"
-            cp -R "$BUILD_DIR"/* dist/
-          else
-            echo "Using fallback root index.html"
-            cp index.html dist/ 2>/dev/null || true
-            cp -R public/* dist/ 2>/dev/null || true
+          if [ ! -f "dist/index.html" ]; then
+            if [ -f "index.html" ]; then
+              cp index.html dist/
+            fi
           fi
           ./node_modules/.bin/cap init "Town Square" "com.townsquare.app" --web-dir "dist" || true
           ./node_modules/.bin/cap add android || true
