@@ -11,6 +11,48 @@ workflows:
         script: npm install --legacy-peer-deps
       - name: STEP 2 - Build Web App & Capacitor Sync
         script: |
+          cat << 'EOF' > enable-spa.cjs
+          const fs = require("fs");
+          const path = require("path");
+
+          const configFiles = ["app.config.ts", "app.config.js", "app.config.mjs", "vite.config.ts", "vite.config.js"];
+          let patched = false;
+
+          for (const file of configFiles) {
+            const filePath = path.join(process.cwd(), file);
+            if (fs.existsSync(filePath)) {
+              let content = fs.readFileSync(filePath, "utf8");
+              if (!content.includes("ssr: false")) {
+                console.log(`Patching ${file} for SPA mode...`);
+                if (content.includes("defineConfig({")) {
+                  content = content.replace("defineConfig({", "defineConfig({\n  ssr: false,");
+                  patched = true;
+                } else if (content.includes("defineConfig(")) {
+                  content = content.replace("defineConfig(", "defineConfig({\n  ssr: false\n},");
+                  patched = true;
+                }
+                if (patched) {
+                  fs.writeFileSync(filePath, content);
+                  console.log(`Successfully updated ${file} with ssr: false`);
+                }
+              } else {
+                console.log(`${file} already has ssr: false configured.`);
+                patched = true;
+              }
+            }
+          }
+
+          if (!patched) {
+            console.log("Creating default app.config.ts with ssr: false...");
+            fs.writeFileSync(
+              path.join(process.cwd(), "app.config.ts"),
+              `import { defineConfig } from '@tanstack/start/config';\nexport default defineConfig({ ssr: false });\n`
+            );
+          }
+          EOF
+
+          node enable-spa.cjs
+
           npm run build || true
 
           cat << 'EOF' > prepare-dist.cjs
@@ -25,123 +67,40 @@ workflows:
             fs.cpSync(outputPublic, distDir, { recursive: true });
           }
 
-          // Ensure assets exist at /assets and /_build/assets for dynamic imports
           const buildAssets = path.join(distDir, "_build", "assets");
           const assetsDir = path.join(distDir, "assets");
-          fs.mkdirSync(assetsDir, { recursive: true });
-          fs.mkdirSync(buildAssets, { recursive: true });
-
           if (fs.existsSync(buildAssets)) {
+            fs.mkdirSync(assetsDir, { recursive: true });
             fs.cpSync(buildAssets, assetsDir, { recursive: true });
           }
-          if (fs.existsSync(assetsDir)) {
-            fs.cpSync(assetsDir, buildAssets, { recursive: true });
-          }
 
-          let jsFiles = [];
-          let cssFiles = [];
-
-          if (fs.existsSync(assetsDir)) {
-            const files = fs.readdirSync(assetsDir);
-            jsFiles = files.filter(f => f.endsWith(".js"));
-            cssFiles = files.filter(f => f.endsWith(".css"));
-          }
-
-          // Locate client entry script
-          let entryJs = jsFiles.find(f => f.startsWith("client") || f.startsWith("entry-client"));
-          if (!entryJs) entryJs = jsFiles.find(f => f.startsWith("main") || f.startsWith("app") || f.startsWith("entry"));
-          if (!entryJs) entryJs = jsFiles.find(f => !f.startsWith("index-") && !f.startsWith("route-"));
-
-          console.log("Detected Entry Bundle:", entryJs);
-
-          const diagnosticScript = `
-          <script>
-            // Reset path for TanStack Router
-            if (window.location.pathname.endsWith('/index.html') || window.location.pathname.endsWith('index.html')) {
-              window.history.replaceState(null, '', '/');
+          let indexPath = path.join(distDir, "index.html");
+          if (!fs.existsSync(indexPath)) {
+            if (fs.existsSync(path.join(distDir, "200.html"))) {
+              fs.copyFileSync(path.join(distDir, "200.html"), indexPath);
+            } else if (fs.existsSync(path.join(distDir, "404.html"))) {
+              fs.copyFileSync(path.join(distDir, "404.html"), indexPath);
             }
+          }
 
-            window.global = window;
-            window.process = window.process || { env: { NODE_ENV: "production" } };
-            window.__VINXI__ = window.__VINXI__ || { assets: {} };
-            window.__manifest__ = window.__manifest__ || {};
-            window.__TSR__ = window.__TSR__ || {};
-            window.__TSR_ROUTER__ = window.__TSR_ROUTER__ || {};
-            window.__TSR_DEHYDRATED__ = window.__TSR_DEHYDRATED__ || {};
-            window.__nitro__ = window.__nitro__ || {};
-            window.$fetch = window.$fetch || function() { return Promise.resolve({}); };
-
-            // Intercept console.error to reveal hidden React/Router hydration errors
-            (function() {
-              var origError = console.error;
-              console.error = function() {
-                origError.apply(console, arguments);
-                var msg = Array.prototype.slice.call(arguments).map(a => (typeof a === "object" ? JSON.stringify(a) : a)).join(" ");
-                if (msg.includes("Warning:") || msg.includes("Download the React DevTools")) return;
-                var d = document.getElementById("debug-error-overlay");
-                if (!d) {
-                  d = document.createElement("div");
-                  d.id = "debug-error-overlay";
-                  d.style.cssText = "position:fixed;top:0;left:0;width:100%;height:100%;z-index:99999;background:#111;color:#ff5555;padding:20px;font-family:monospace;font-size:12px;overflow:scroll;white-space:pre-wrap;word-break:break-all;";
-                  document.body.appendChild(d);
-                }
-                d.innerText += "\\n[CONSOLE ERROR]\\n" + msg + "\\n";
-              };
-            })();
-
-            window.addEventListener("error", function(e) {
-              var d = document.getElementById("debug-error-overlay");
-              if (!d) {
-                d = document.createElement("div");
-                d.id = "debug-error-overlay";
-                d.style.cssText = "position:fixed;top:0;left:0;width:100%;height:100%;z-index:99999;background:#111;color:#ff5555;padding:20px;font-family:monospace;font-size:12px;overflow:scroll;white-space:pre-wrap;word-break:break-all;";
-                document.body.appendChild(d);
+          if (fs.existsSync(indexPath)) {
+            let html = fs.readFileSync(indexPath, "utf8");
+            const resetScript = `
+            <script>
+              if (window.location.pathname.endsWith('/index.html') || window.location.pathname.endsWith('index.html')) {
+                window.history.replaceState(null, '', '/');
               }
-              d.innerText += "\\nAPP RUNTIME ERROR:\\n" + e.message + "\\nFile: " + e.filename + ":" + e.lineno + "\\n";
-            });
-          </script>
-          `;
-
-          let existingHtmlPath = path.join(distDir, "index.html");
-          if (!fs.existsSync(existingHtmlPath)) {
-            if (fs.existsSync(path.join(distDir, "200.html"))) existingHtmlPath = path.join(distDir, "200.html");
-            else if (fs.existsSync(path.join(distDir, "404.html"))) existingHtmlPath = path.join(distDir, "404.html");
-          }
-
-          if (fs.existsSync(existingHtmlPath) && existingHtmlPath !== path.join(distDir, "index.html")) {
-            fs.copyFileSync(existingHtmlPath, path.join(distDir, "index.html"));
-          }
-
-          if (fs.existsSync(path.join(distDir, "index.html"))) {
-            let html = fs.readFileSync(path.join(distDir, "index.html"), "utf8");
+            </script>
+            `;
             if (html.includes("<head>")) {
-              html = html.replace("<head>", "<head>" + diagnosticScript);
+              html = html.replace("<head>", "<head>" + resetScript);
             } else {
-              html = diagnosticScript + html;
+              html = resetScript + html;
             }
-            fs.writeFileSync(path.join(distDir, "index.html"), html);
+            fs.writeFileSync(indexPath, html);
+            console.log("Successfully prepared static dist/index.html!");
           } else {
-            const cssTags = cssFiles.map(f => `<link rel="stylesheet" href="./assets/${f}">`).join("\n    ");
-            const jsTag = entryJs ? `<script type="module" src="./assets/${entryJs}"></script>` : "";
-
-            const htmlContent = `<!DOCTYPE html>
-          <html lang="en">
-            <head>
-              <meta charset="UTF-8" />
-              <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-              <title>Town Square</title>
-              ${cssTags}
-              ${diagnosticScript}
-            </head>
-            <body>
-              <div id="root"></div>
-              <div id="app"></div>
-              <div id="__next"></div>
-              ${jsTag}
-            </body>
-          </html>`;
-
-            fs.writeFileSync(path.join(distDir, "index.html"), htmlContent);
+            console.error("Warning: index.html was not generated.");
           }
           EOF
 
