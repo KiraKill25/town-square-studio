@@ -41,8 +41,50 @@ workflows:
             cssFiles = files.filter(f => f.endsWith(".css"));
           }
 
+          // Strictly find ONLY the entry JS file, excluding route chunks
+          let entryJs = "";
+
+          const manifestPaths = [
+            path.join(distDir, "manifest.json"),
+            path.join(distDir, "_build", "manifest.json"),
+            path.join(distDir, ".vite", "manifest.json")
+          ];
+          for (const mp of manifestPaths) {
+            if (fs.existsSync(mp)) {
+              try {
+                const manifest = JSON.parse(fs.readFileSync(mp, "utf8"));
+                for (const k in manifest) {
+                  if (manifest[k].isEntry && manifest[k].file) {
+                    entryJs = path.basename(manifest[k].file);
+                    break;
+                  }
+                }
+              } catch(e) {}
+            }
+            if (entryJs) break;
+          }
+
+          if (!entryJs) {
+            entryJs = jsFiles.find(f => f.startsWith("client") || f.startsWith("entry-client"));
+          }
+          if (!entryJs) {
+            entryJs = jsFiles.find(f => f.startsWith("main") || f.startsWith("app") || f.startsWith("entry"));
+          }
+          if (!entryJs) {
+            entryJs = jsFiles.find(f => {
+              if (f.startsWith("index-") || f.startsWith("route-")) return false;
+              const content = fs.readFileSync(path.join(assetsDir, f), "utf8");
+              return content.includes("createRoot") || content.includes("hydrateRoot") || content.includes("ReactDOM");
+            });
+          }
+          if (!entryJs) {
+            entryJs = jsFiles.find(f => !f.startsWith("index-") && !f.startsWith("route-"));
+          }
+
+          console.log("Selected Entry JS Point:", entryJs);
+
           const cssTags = cssFiles.map(f => `<link rel="stylesheet" href="./assets/${f}">`).join("\n    ");
-          const jsTags = jsFiles.map(f => `<script type="module" src="./assets/${f}"></script>`).join("\n    ");
+          const jsTag = entryJs ? `<script type="module" src="./assets/${entryJs}"></script>` : "";
 
           const htmlContent = `<!DOCTYPE html>
           <html lang="en">
@@ -52,7 +94,6 @@ workflows:
               <title>Town Square</title>
               ${cssTags}
               <script>
-                // Reset URL path so TanStack Router matches the root '/' route instead of '/index.html'
                 if (window.location.pathname.endsWith('/index.html') || window.location.pathname.endsWith('index.html')) {
                   window.history.replaceState(null, '', '/');
                 }
@@ -85,7 +126,7 @@ workflows:
               <div id="root"></div>
               <div id="app"></div>
               <div id="__next"></div>
-              ${jsTags}
+              ${jsTag}
             </body>
           </html>`;
 
