@@ -237,7 +237,7 @@ export function HowToPlayModal({ onClose }: { onClose: () => void }) {
                 aria-label={`${k + 1} / ${IMAGES.length}`}
                 aria-current={k === i}
                 className={`h-2 rounded-full transition-all duration-300 ${
-                  k === i ? "w-6 bg-primary shadow-[0_0_10px_var(--primary)]" : "w-2 bg-muted"
+                  k === i ? "w-6 bg-primary shadow-[0_0_10px_var(--primary)]" : "w-2 bg-muted-foreground/50"
                 }`}
               />
             ))}
