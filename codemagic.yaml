@@ -9,7 +9,7 @@ workflows:
     scripts:
       - name: STEP 1 - Install Dependencies
         script: npm install --legacy-peer-deps
-      - name: STEP 2 - Build & Prepare Static Assets
+      - name: STEP 2 - Build & Prepare Static SPA Assets
         script: |
           git checkout -- . || true
 
@@ -48,32 +48,10 @@ workflows:
             }
           }
 
-          if (!fs.existsSync(indexPath)) {
-            const files = fs.readdirSync(assetsDir);
-            const jsFiles = files.filter(f => f.endsWith(".js"));
-            const cssFiles = files.filter(f => f.endsWith(".css"));
-
-            let entryJs = jsFiles.find(f => f.startsWith("client") || f.startsWith("entry-client") || f.startsWith("main") || f.startsWith("index"));
-            if (!entryJs && jsFiles.length > 0) entryJs = jsFiles[0];
-
-            const cssTags = cssFiles.map(f => `<link rel="stylesheet" href="./assets/${f}">`).join("\n");
-            const jsTag = entryJs ? `<script type="module" src="./assets/${entryJs}"></script>` : "";
-
-            const htmlContent = `<!DOCTYPE html>
-          <html lang="en">
-            <head>
-              <meta charset="UTF-8" />
-              <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-              <title>Town Square</title>
-              ${cssTags}
-            </head>
-            <body>
-              <div id="root"></div>
-              <div id="app"></div>
-              ${jsTag}
-            </body>
-          </html>`;
-            fs.writeFileSync(indexPath, htmlContent);
+          // Duplicate index.html as 200.html and 404.html for webview fallback
+          if (fs.existsSync(indexPath)) {
+            fs.copyFileSync(indexPath, path.join(distDir, "200.html"));
+            fs.copyFileSync(indexPath, path.join(distDir, "404.html"));
           }
 
           console.log("Static distribution directory successfully prepared!");
