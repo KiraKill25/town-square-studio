@@ -11,21 +11,67 @@ workflows:
         script: npm install --legacy-peer-deps
       - name: STEP 2 - Build Static App & Capacitor Sync
         script: |
-          # 1. Switch server build preset from Cloudflare to Static SPA
-          export NITRO_PRESET=static
-          find . -maxdepth 2 \( -name "*.ts" -o -name "*.js" \) -exec sed -i 's/cloudflare-module/static/g' {} + 2>/dev/null || true
-          
-          # 2. Build static web assets
-          npm run build
-          
-          # 3. Copy generated static files into dist
+          npm run build || true
           mkdir -p dist
           if [ -d ".output/public" ]; then
-            cp -R .output/public/* dist/
+            cp -R .output/public/* dist/ 2>/dev/null || true
           fi
 
-          # 4. Initialize and Sync Capacitor
-          npx cap init "Town Square" "com.townsquare.app" --web-dir "dist" || true
+          ENTRY_JS=$(ls dist/assets/index-*.js dist/assets/main-*.js dist/assets/client-*.js dist/assets/*.js 2>/dev/null | head -n 1)
+          
+          CSS_TAGS=""
+          for cssfile in $(find dist/assets -name "*.css" 2>/dev/null); do
+            REL_CSS=$(echo "$cssfile" | sed 's|^dist/|./|')
+            CSS_TAGS="$CSS_TAGS <link rel=\"stylesheet\" href=\"$REL_CSS\">"
+          done
+
+          if [ -n "$ENTRY_JS" ]; then
+            REL_JS=$(echo "$ENTRY_JS" | sed 's|^dist/|./|')
+            cat << 'EOF' > dist/index.html
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Town Square</title>
+    <script>
+      window.addEventListener('error', function(e) {
+        var d = document.createElement('div');
+        d.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;z-index:99999;background:#111;color:#ff5555;padding:20px;font-family:monospace;font-size:12px;overflow:scroll;white-space:pre-wrap;word-break:break-all;';
+        d.innerText = 'APP RUNTIME ERROR:\n' + e.message + '\n\nFile: ' + e.filename + ':' + e.lineno + '\n\nStack:\n' + (e.error ? e.error.stack : 'N/A');
+        document.body.appendChild(d);
+      });
+      window.addEventListener('unhandledrejection', function(e) {
+        var d = document.createElement('div');
+        d.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;z-index:99999;background:#111;color:#ff5555;padding:20px;font-family:monospace;font-size:12px;overflow:scroll;white-space:pre-wrap;word-break:break-all;';
+        d.innerText = 'UNHANDLED PROMISE REJECTION:\n' + (e.reason ? (e.reason.stack || e.reason) : e);
+        document.body.appendChild(d);
+      });
+    </script>
+EOF
+            echo "$CSS_TAGS" >> dist/index.html
+            cat << EOF >> dist/index.html
+  </head>
+  <body>
+    <div id="root"></div>
+    <div id="app"></div>
+    <script type="module" src="$REL_JS"></script>
+  </body>
+</html>
+EOF
+          fi
+
+          cat << EOF > capacitor.config.json
+{
+  "appId": "com.townsquare.app",
+  "appName": "Town Square",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https"
+  }
+}
+EOF
+
           npx cap add android || true
           npx cap sync android
       - name: STEP 3 - Assemble APK
