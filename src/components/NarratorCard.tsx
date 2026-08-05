@@ -17,6 +17,10 @@ export function NarratorCard({
   children?: React.ReactNode;
 }) {
   const ref = useRef<HTMLVideoElement>(null);
+  const { lang } = useI18n();
+  const [guide, setGuide] = useState(false);
+  const guideLabel = HOWTO[lang].openLabel;
+
 
   useEffect(() => {
     const el = ref.current;
