@@ -16,25 +16,26 @@ workflows:
           if [ -d ".output/public" ]; then
             cp -R .output/public/* dist/ 2>/dev/null || true
           fi
-          
-          # Automatically detect compiled JS and CSS bundles and link them into index.html
-          JS_TAGS=""
-          ENTRY_JS=$(find dist/assets -name "index-*.js" -o -name "main-*.js" -o -name "client-*.js" 2>/dev/null)
-          if [ -z "$ENTRY_JS" ]; then
-            ENTRY_JS=$(find dist/assets -name "*.js" 2>/dev/null)
+
+          if [ -f "dist/200.html" ] && [ ! -f "dist/index.html" ]; then
+            cp dist/200.html dist/index.html
           fi
-          for jsfile in $ENTRY_JS; do
-            REL_JS=$(echo "$jsfile" | sed 's|^dist/|./|')
-            JS_TAGS="$JS_TAGS <script type=\"module\" src=\"$REL_JS\"></script>"
-          done
 
-          CSS_TAGS=""
-          for cssfile in $(find dist/assets -name "*.css" 2>/dev/null); do
-            REL_CSS=$(echo "$cssfile" | sed 's|^dist/|./|')
-            CSS_TAGS="$CSS_TAGS <link rel=\"stylesheet\" href=\"$REL_CSS\">"
-          done
+          if [ ! -f "dist/index.html" ]; then
+            ENTRY_JS=$(grep -l -E "createRoot|hydrateRoot|\$Router|render" dist/assets/*.js 2>/dev/null | head -n 1)
+            if [ -z "$ENTRY_JS" ]; then
+              ENTRY_JS=$(ls dist/assets/client-*.js dist/assets/main-*.js dist/assets/index-*.js dist/assets/*.js 2>/dev/null | head -n 1)
+            fi
+            
+            REL_JS=$(echo "$ENTRY_JS" | sed 's|^dist/|./|')
+            
+            CSS_TAGS=""
+            for cssfile in $(find dist/assets -name "*.css" 2>/dev/null); do
+              REL_CSS=$(echo "$cssfile" | sed 's|^dist/|./|')
+              CSS_TAGS="$CSS_TAGS <link rel=\"stylesheet\" href=\"$REL_CSS\">"
+            done
 
-          cat << EOF > dist/index.html
+            cat << EOF > dist/index.html
           <!DOCTYPE html>
           <html lang="en">
             <head>
@@ -46,10 +47,11 @@ workflows:
             <body>
               <div id="root"></div>
               <div id="app"></div>
-              $JS_TAGS
+              <script type="module" src="$REL_JS"></script>
             </body>
           </html>
           EOF
+          fi
 
           npx cap init "Town Square" "com.townsquare.app" --web-dir "dist" || true
           npx cap add android || true
