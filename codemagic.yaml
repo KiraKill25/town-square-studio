@@ -25,11 +25,17 @@ workflows:
             fs.cpSync(outputPublic, distDir, { recursive: true });
           }
 
+          // Ensure assets exist at /assets and /_build/assets for dynamic imports
           const buildAssets = path.join(distDir, "_build", "assets");
           const assetsDir = path.join(distDir, "assets");
+          fs.mkdirSync(assetsDir, { recursive: true });
+          fs.mkdirSync(buildAssets, { recursive: true });
+
           if (fs.existsSync(buildAssets)) {
-            fs.mkdirSync(assetsDir, { recursive: true });
             fs.cpSync(buildAssets, assetsDir, { recursive: true });
+          }
+          if (fs.existsSync(assetsDir)) {
+            fs.cpSync(assetsDir, buildAssets, { recursive: true });
           }
 
           let jsFiles = [];
@@ -41,86 +47,91 @@ workflows:
             cssFiles = files.filter(f => f.endsWith(".css"));
           }
 
-          // Strictly find ONLY the entry JS file, excluding route chunks
-          let entryJs = "";
+          // Locate client entry script
+          let entryJs = jsFiles.find(f => f.startsWith("client") || f.startsWith("entry-client"));
+          if (!entryJs) entryJs = jsFiles.find(f => f.startsWith("main") || f.startsWith("app") || f.startsWith("entry"));
+          if (!entryJs) entryJs = jsFiles.find(f => !f.startsWith("index-") && !f.startsWith("route-"));
 
-          const manifestPaths = [
-            path.join(distDir, "manifest.json"),
-            path.join(distDir, "_build", "manifest.json"),
-            path.join(distDir, ".vite", "manifest.json")
-          ];
-          for (const mp of manifestPaths) {
-            if (fs.existsSync(mp)) {
-              try {
-                const manifest = JSON.parse(fs.readFileSync(mp, "utf8"));
-                for (const k in manifest) {
-                  if (manifest[k].isEntry && manifest[k].file) {
-                    entryJs = path.basename(manifest[k].file);
-                    break;
-                  }
-                }
-              } catch(e) {}
+          console.log("Detected Entry Bundle:", entryJs);
+
+          const diagnosticScript = `
+          <script>
+            // Reset path for TanStack Router
+            if (window.location.pathname.endsWith('/index.html') || window.location.pathname.endsWith('index.html')) {
+              window.history.replaceState(null, '', '/');
             }
-            if (entryJs) break;
-          }
 
-          if (!entryJs) {
-            entryJs = jsFiles.find(f => f.startsWith("client") || f.startsWith("entry-client"));
-          }
-          if (!entryJs) {
-            entryJs = jsFiles.find(f => f.startsWith("main") || f.startsWith("app") || f.startsWith("entry"));
-          }
-          if (!entryJs) {
-            entryJs = jsFiles.find(f => {
-              if (f.startsWith("index-") || f.startsWith("route-")) return false;
-              const content = fs.readFileSync(path.join(assetsDir, f), "utf8");
-              return content.includes("createRoot") || content.includes("hydrateRoot") || content.includes("ReactDOM");
+            window.global = window;
+            window.process = window.process || { env: { NODE_ENV: "production" } };
+            window.__VINXI__ = window.__VINXI__ || { assets: {} };
+            window.__manifest__ = window.__manifest__ || {};
+            window.__TSR__ = window.__TSR__ || {};
+            window.__TSR_ROUTER__ = window.__TSR_ROUTER__ || {};
+            window.__TSR_DEHYDRATED__ = window.__TSR_DEHYDRATED__ || {};
+            window.__nitro__ = window.__nitro__ || {};
+            window.$fetch = window.$fetch || function() { return Promise.resolve({}); };
+
+            // Intercept console.error to reveal hidden React/Router hydration errors
+            (function() {
+              var origError = console.error;
+              console.error = function() {
+                origError.apply(console, arguments);
+                var msg = Array.prototype.slice.call(arguments).map(a => (typeof a === "object" ? JSON.stringify(a) : a)).join(" ");
+                if (msg.includes("Warning:") || msg.includes("Download the React DevTools")) return;
+                var d = document.getElementById("debug-error-overlay");
+                if (!d) {
+                  d = document.createElement("div");
+                  d.id = "debug-error-overlay";
+                  d.style.cssText = "position:fixed;top:0;left:0;width:100%;height:100%;z-index:99999;background:#111;color:#ff5555;padding:20px;font-family:monospace;font-size:12px;overflow:scroll;white-space:pre-wrap;word-break:break-all;";
+                  document.body.appendChild(d);
+                }
+                d.innerText += "\\n[CONSOLE ERROR]\\n" + msg + "\\n";
+              };
+            })();
+
+            window.addEventListener("error", function(e) {
+              var d = document.getElementById("debug-error-overlay");
+              if (!d) {
+                d = document.createElement("div");
+                d.id = "debug-error-overlay";
+                d.style.cssText = "position:fixed;top:0;left:0;width:100%;height:100%;z-index:99999;background:#111;color:#ff5555;padding:20px;font-family:monospace;font-size:12px;overflow:scroll;white-space:pre-wrap;word-break:break-all;";
+                document.body.appendChild(d);
+              }
+              d.innerText += "\\nAPP RUNTIME ERROR:\\n" + e.message + "\\nFile: " + e.filename + ":" + e.lineno + "\\n";
             });
+          </script>
+          `;
+
+          let existingHtmlPath = path.join(distDir, "index.html");
+          if (!fs.existsSync(existingHtmlPath)) {
+            if (fs.existsSync(path.join(distDir, "200.html"))) existingHtmlPath = path.join(distDir, "200.html");
+            else if (fs.existsSync(path.join(distDir, "404.html"))) existingHtmlPath = path.join(distDir, "404.html");
           }
-          if (!entryJs) {
-            entryJs = jsFiles.find(f => !f.startsWith("index-") && !f.startsWith("route-"));
+
+          if (fs.existsSync(existingHtmlPath) && existingHtmlPath !== path.join(distDir, "index.html")) {
+            fs.copyFileSync(existingHtmlPath, path.join(distDir, "index.html"));
           }
 
-          console.log("Selected Entry JS Point:", entryJs);
+          if (fs.existsSync(path.join(distDir, "index.html"))) {
+            let html = fs.readFileSync(path.join(distDir, "index.html"), "utf8");
+            if (html.includes("<head>")) {
+              html = html.replace("<head>", "<head>" + diagnosticScript);
+            } else {
+              html = diagnosticScript + html;
+            }
+            fs.writeFileSync(path.join(distDir, "index.html"), html);
+          } else {
+            const cssTags = cssFiles.map(f => `<link rel="stylesheet" href="./assets/${f}">`).join("\n    ");
+            const jsTag = entryJs ? `<script type="module" src="./assets/${entryJs}"></script>` : "";
 
-          const cssTags = cssFiles.map(f => `<link rel="stylesheet" href="./assets/${f}">`).join("\n    ");
-          const jsTag = entryJs ? `<script type="module" src="./assets/${entryJs}"></script>` : "";
-
-          const htmlContent = `<!DOCTYPE html>
+            const htmlContent = `<!DOCTYPE html>
           <html lang="en">
             <head>
               <meta charset="UTF-8" />
               <meta name="viewport" content="width=device-width, initial-scale=1.0" />
               <title>Town Square</title>
               ${cssTags}
-              <script>
-                if (window.location.pathname.endsWith('/index.html') || window.location.pathname.endsWith('index.html')) {
-                  window.history.replaceState(null, '', '/');
-                }
-
-                window.global = window;
-                window.process = window.process || { env: { NODE_ENV: "production" } };
-                window.__VINXI__ = window.__VINXI__ || { assets: {} };
-                window.__manifest__ = window.__manifest__ || {};
-                window.__TSR__ = window.__TSR__ || {};
-                window.__TSR_ROUTER__ = window.__TSR_ROUTER__ || {};
-                window.__TSR_DEHYDRATED__ = window.__TSR_DEHYDRATED__ || {};
-                window.__nitro__ = window.__nitro__ || {};
-                window.$fetch = window.$fetch || function() { return Promise.resolve({}); };
-
-                window.addEventListener("error", function(e) {
-                  var d = document.createElement("div");
-                  d.style.cssText = "position:fixed;top:0;left:0;width:100%;height:100%;z-index:99999;background:#111;color:#ff5555;padding:20px;font-family:monospace;font-size:12px;overflow:scroll;white-space:pre-wrap;word-break:break-all;";
-                  d.innerText = "APP RUNTIME ERROR:\\n" + e.message + "\\n\\nFile: " + e.filename + ":" + e.lineno + "\\n\\nStack:\\n" + (e.error ? e.error.stack : "N/A");
-                  document.body.appendChild(d);
-                });
-                window.addEventListener("unhandledrejection", function(e) {
-                  var d = document.createElement("div");
-                  d.style.cssText = "position:fixed;top:0;left:0;width:100%;height:100%;z-index:99999;background:#111;color:#ff5555;padding:20px;font-family:monospace;font-size:12px;overflow:scroll;white-space:pre-wrap;word-break:break-all;";
-                  d.innerText = "UNHANDLED PROMISE REJECTION:\\n" + (e.reason ? (e.reason.stack || e.reason) : e);
-                  document.body.appendChild(d);
-                });
-              </script>
+              ${diagnosticScript}
             </head>
             <body>
               <div id="root"></div>
@@ -130,7 +141,8 @@ workflows:
             </body>
           </html>`;
 
-          fs.writeFileSync(path.join(distDir, "index.html"), htmlContent);
+            fs.writeFileSync(path.join(distDir, "index.html"), htmlContent);
+          }
           EOF
 
           node prepare-dist.cjs
