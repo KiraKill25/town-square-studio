@@ -22,9 +22,8 @@ workflows:
           if [ ! -f "dist/index.html" ]; then
             echo '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Town Square</title></head><body><div id="root"></div></body></html>' > dist/index.html
           fi
-          rm -rf android
           npx cap init "Town Square" "com.townsquare.app" --web-dir "dist" || true
-          npx cap add android
+          npx cap add android || true
           npx cap sync android
       - name: STEP 3 - Assemble APK
         script: |
