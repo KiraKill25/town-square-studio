@@ -22,9 +22,23 @@ workflows:
           const distDir = path.join(process.cwd(), "dist");
           fs.mkdirSync(distDir, { recursive: true });
 
+          // Copy Nitro public build output
           const outputPublic = path.join(process.cwd(), ".output", "public");
           if (fs.existsSync(outputPublic)) {
             fs.cpSync(outputPublic, distDir, { recursive: true });
+          }
+
+          // Ensure assets exist at both /assets and /_build/assets
+          const buildAssets = path.join(distDir, "_build", "assets");
+          const assetsDir = path.join(distDir, "assets");
+          fs.mkdirSync(buildAssets, { recursive: true });
+          fs.mkdirSync(assetsDir, { recursive: true });
+
+          if (fs.existsSync(buildAssets)) {
+            fs.cpSync(buildAssets, assetsDir, { recursive: true });
+          }
+          if (fs.existsSync(assetsDir)) {
+            fs.cpSync(assetsDir, buildAssets, { recursive: true });
           }
 
           let indexPath = path.join(distDir, "index.html");
@@ -36,18 +50,68 @@ workflows:
             }
           }
 
-          const buildAssets = path.join(distDir, "_build", "assets");
-          const assetsDir = path.join(distDir, "assets");
-          if (fs.existsSync(buildAssets)) {
-            fs.mkdirSync(assetsDir, { recursive: true });
-            fs.cpSync(buildAssets, assetsDir, { recursive: true });
-          }
-          if (fs.existsSync(assetsDir)) {
-            fs.mkdirSync(buildAssets, { recursive: true });
-            fs.cpSync(assetsDir, buildAssets, { recursive: true });
-          }
+          // Automatically construct index.html if missing from SSR build
+          if (!fs.existsSync(indexPath)) {
+            console.log("No index.html found. Generating static HTML shell...");
 
-          if (fs.existsSync(indexPath)) {
+            let jsFiles = [];
+            let cssFiles = [];
+
+            const scanDir = (dir) => {
+              if (fs.existsSync(dir)) {
+                const files = fs.readdirSync(dir);
+                files.forEach(f => {
+                  if (f.endsWith(".js")) jsFiles.push(f);
+                  if (f.endsWith(".css")) cssFiles.push(f);
+                });
+              }
+            };
+
+            scanDir(buildAssets);
+            scanDir(assetsDir);
+
+            jsFiles = [...new Set(jsFiles)];
+            cssFiles = [...new Set(cssFiles)];
+
+            let entryJs = jsFiles.find(f => f.startsWith("client") || f.startsWith("entry-client"));
+            if (!entryJs) entryJs = jsFiles.find(f => f.startsWith("main") || f.startsWith("app") || f.startsWith("entry"));
+            if (!entryJs) entryJs = jsFiles.find(f => !f.startsWith("route-") && !f.startsWith("index-"));
+            if (!entryJs && jsFiles.length > 0) entryJs = jsFiles[0];
+
+            console.log("Detected CSS assets:", cssFiles);
+            console.log("Detected JS entry point:", entryJs);
+
+            const cssTags = cssFiles.map(f => `<link rel="stylesheet" href="./assets/${f}">`).join("\n    ");
+            const jsTag = entryJs ? `<script type="module" src="./assets/${entryJs}"></script>` : "";
+
+            const htmlContent = `<!DOCTYPE html>
+          <html lang="en">
+            <head>
+              <meta charset="UTF-8" />
+              <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+              <title>Town Square</title>
+              ${cssTags}
+              <script>
+                (function() {
+                  if (window.location.pathname.endsWith('/index.html') || window.location.pathname.includes('index.html')) {
+                    window.history.replaceState(null, '', '/');
+                  }
+                  window.global = window;
+                  window.process = window.process || { env: { NODE_ENV: "production" } };
+                })();
+              </script>
+            </head>
+            <body>
+              <div id="root"></div>
+              <div id="app"></div>
+              <div id="__next"></div>
+              ${jsTag}
+            </body>
+          </html>`;
+
+            fs.writeFileSync(indexPath, htmlContent);
+            console.log("Generated dist/index.html successfully!");
+          } else {
             let html = fs.readFileSync(indexPath, "utf8");
             const urlFixScript = `
             <script>
@@ -55,6 +119,8 @@ workflows:
                 if (window.location.pathname.endsWith('/index.html') || window.location.pathname.includes('index.html')) {
                   window.history.replaceState(null, '', '/');
                 }
+                window.global = window;
+                window.process = window.process || { env: { NODE_ENV: "production" } };
               })();
             </script>
             `;
