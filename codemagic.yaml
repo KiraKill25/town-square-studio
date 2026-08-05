@@ -9,9 +9,13 @@ workflows:
     scripts:
       - name: STEP 1 - Install Dependencies
         script: npm install --legacy-peer-deps
-      - name: STEP 2 - Build Static App & Capacitor Sync
+      - name: STEP 2 - Build Static Web App & Capacitor Sync
         script: |
+          export SSR=false
+          export VITE_SSR=false
+          export NITRO_PRESET=static
           npm run build || true
+
           mkdir -p dist
           if [ -d ".output/public" ]; then
             cp -R .output/public/* dist/ 2>/dev/null || true
@@ -24,40 +28,68 @@ workflows:
           const distDir = path.join(process.cwd(), "dist");
           const assetsDir = path.join(distDir, "assets");
 
-          let jsFiles = [];
-          let cssFiles = [];
+          const polyfillScript = `
+          <script>
+            window.global = window;
+            window.process = window.process || { env: { NODE_ENV: "production" } };
+            window.__VINXI__ = window.__VINXI__ || { assets: {} };
+            window.__manifest__ = window.__manifest__ || {};
+            window.__TSR__ = window.__TSR__ || {};
+            window.__TSR_ROUTER__ = window.__TSR_ROUTER__ || {};
+            window.__TSR_DEHYDRATED__ = window.__TSR_DEHYDRATED__ || {};
+            window.__nitro__ = window.__nitro__ || {};
+            window.$fetch = window.$fetch || function() { return Promise.resolve({}); };
 
-          if (fs.existsSync(assetsDir)) {
-            const files = fs.readdirSync(assetsDir);
-            jsFiles = files.filter(f => f.endsWith(".js"));
-            cssFiles = files.filter(f => f.endsWith(".css"));
+            window.addEventListener("error", function(e) {
+              var d = document.createElement("div");
+              d.style.cssText = "position:fixed;top:0;left:0;width:100%;height:100%;z-index:99999;background:#111;color:#ff5555;padding:20px;font-family:monospace;font-size:12px;overflow:scroll;white-space:pre-wrap;word-break:break-all;";
+              d.innerText = "APP RUNTIME ERROR:\\n" + e.message + "\\n\\nFile: " + e.filename + ":" + e.lineno + "\\n\\nStack:\\n" + (e.error ? e.error.stack : "N/A");
+              document.body.appendChild(d);
+            });
+            window.addEventListener("unhandledrejection", function(e) {
+              var d = document.createElement("div");
+              d.style.cssText = "position:fixed;top:0;left:0;width:100%;height:100%;z-index:99999;background:#111;color:#ff5555;padding:20px;font-family:monospace;font-size:12px;overflow:scroll;white-space:pre-wrap;word-break:break-all;";
+              d.innerText = "UNHANDLED PROMISE REJECTION:\\n" + (e.reason ? (e.reason.stack || e.reason) : e);
+              document.body.appendChild(d);
+            });
+          </script>
+          `;
+
+          let indexPath = path.join(distDir, "index.html");
+          if (!fs.existsSync(indexPath) && fs.existsSync(path.join(distDir, "200.html"))) {
+            fs.copyFileSync(path.join(distDir, "200.html"), indexPath);
           }
 
-          const entryJs = jsFiles.find(f => f.startsWith("index-") || f.startsWith("main-") || f.startsWith("client-")) || jsFiles[0] || "";
-          const jsTag = entryJs ? `<script type="module" src="./assets/${entryJs}"></script>` : "";
-          const cssTags = cssFiles.map(f => `<link rel="stylesheet" href="./assets/${f}">`).join("\n    ");
+          if (fs.existsSync(indexPath)) {
+            let html = fs.readFileSync(indexPath, "utf8");
+            if (html.includes("<head>")) {
+              html = html.replace("<head>", "<head>" + polyfillScript);
+            } else {
+              html = polyfillScript + html;
+            }
+            fs.writeFileSync(indexPath, html);
+          } else {
+            let jsFiles = [];
+            let cssFiles = [];
 
-          const htmlContent = `<!DOCTYPE html>
+            if (fs.existsSync(assetsDir)) {
+              const files = fs.readdirSync(assetsDir);
+              jsFiles = files.filter(f => f.endsWith(".js"));
+              cssFiles = files.filter(f => f.endsWith(".css"));
+            }
+
+            const entryJs = jsFiles.find(f => f.startsWith("index-") || f.startsWith("main-") || f.startsWith("client-")) || jsFiles[0] || "";
+            const jsTag = entryJs ? `<script type="module" src="./assets/${entryJs}"></script>` : "";
+            const cssTags = cssFiles.map(f => `<link rel="stylesheet" href="./assets/${f}">`).join("\n    ");
+
+            const htmlContent = `<!DOCTYPE html>
           <html lang="en">
             <head>
               <meta charset="UTF-8" />
               <meta name="viewport" content="width=device-width, initial-scale=1.0" />
               <title>Town Square</title>
               ${cssTags}
-              <script>
-                window.addEventListener("error", function(e) {
-                  var d = document.createElement("div");
-                  d.style.cssText = "position:fixed;top:0;left:0;width:100%;height:100%;z-index:99999;background:#111;color:#ff5555;padding:20px;font-family:monospace;font-size:12px;overflow:scroll;white-space:pre-wrap;word-break:break-all;";
-                  d.innerText = "APP RUNTIME ERROR:\\n" + e.message + "\\n\\nFile: " + e.filename + ":" + e.lineno + "\\n\\nStack:\\n" + (e.error ? e.error.stack : "N/A");
-                  document.body.appendChild(d);
-                });
-                window.addEventListener("unhandledrejection", function(e) {
-                  var d = document.createElement("div");
-                  d.style.cssText = "position:fixed;top:0;left:0;width:100%;height:100%;z-index:99999;background:#111;color:#ff5555;padding:20px;font-family:monospace;font-size:12px;overflow:scroll;white-space:pre-wrap;word-break:break-all;";
-                  d.innerText = "UNHANDLED PROMISE REJECTION:\\n" + (e.reason ? (e.reason.stack || e.reason) : e);
-                  document.body.appendChild(d);
-                });
-              </script>
+              ${polyfillScript}
             </head>
             <body>
               <div id="root"></div>
@@ -66,7 +98,8 @@ workflows:
             </body>
           </html>`;
 
-          fs.writeFileSync(path.join(distDir, "index.html"), htmlContent);
+            fs.writeFileSync(indexPath, htmlContent);
+          }
           '
 
           cat << EOF > capacitor.config.json
