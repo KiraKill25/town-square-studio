@@ -11,10 +11,8 @@ workflows:
         script: npm install --legacy-peer-deps
       - name: STEP 2 - Build & Prepare Static Assets
         script: |
-          # Reset any modified repository files
           git checkout -- . || true
 
-          # Build TanStack Start / Vite app
           npm run build || true
 
           cat << 'EOF' > copy-dist.cjs
@@ -24,13 +22,11 @@ workflows:
           const distDir = path.join(process.cwd(), "dist");
           fs.mkdirSync(distDir, { recursive: true });
 
-          // Copy Nitro static output
           const outputPublic = path.join(process.cwd(), ".output", "public");
           if (fs.existsSync(outputPublic)) {
             fs.cpSync(outputPublic, distDir, { recursive: true });
           }
 
-          // Ensure index.html exists
           let indexPath = path.join(distDir, "index.html");
           if (!fs.existsSync(indexPath)) {
             if (fs.existsSync(path.join(distDir, "200.html"))) {
@@ -40,7 +36,6 @@ workflows:
             }
           }
 
-          // Ensure assets directories are aligned
           const buildAssets = path.join(distDir, "_build", "assets");
           const assetsDir = path.join(distDir, "assets");
           if (fs.existsSync(buildAssets)) {
@@ -52,20 +47,37 @@ workflows:
             fs.cpSync(assetsDir, buildAssets, { recursive: true });
           }
 
+          if (fs.existsSync(indexPath)) {
+            let html = fs.readFileSync(indexPath, "utf8");
+            const urlFixScript = `
+            <script>
+              (function() {
+                if (window.location.pathname.endsWith('/index.html') || window.location.pathname.includes('index.html')) {
+                  window.history.replaceState(null, '', '/');
+                }
+              })();
+            </script>
+            `;
+            if (html.includes("<head>")) {
+              html = html.replace("<head>", "<head>" + urlFixScript);
+            } else {
+              html = urlFixScript + html;
+            }
+            fs.writeFileSync(indexPath, html);
+          }
+
           console.log("Static distribution directory successfully prepared!");
           EOF
 
           node copy-dist.cjs
 
-          # Configure Capacitor for Capacitor Web View
           cat << EOF > capacitor.config.json
           {
             "appId": "com.townsquare.app",
             "appName": "Town Square",
             "webDir": "dist",
             "server": {
-              "androidScheme": "https",
-              "cleartext": true
+              "androidScheme": "https"
             }
           }
           EOF
