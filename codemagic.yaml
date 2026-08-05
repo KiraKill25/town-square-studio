@@ -9,11 +9,8 @@ workflows:
     scripts:
       - name: STEP 1 - Install Dependencies
         script: npm install --legacy-peer-deps
-      - name: STEP 2 - Build Static Web App & Capacitor Sync
+      - name: STEP 2 - Build Web App & Capacitor Sync
         script: |
-          export SSR=false
-          export VITE_SSR=false
-          export NITRO_PRESET=static
           npm run build || true
 
           mkdir -p dist
@@ -22,113 +19,107 @@ workflows:
           fi
 
           node -e '
+          const { spawn } = require("child_process");
           const fs = require("fs");
           const path = require("path");
+          const http = require("http");
 
           const distDir = path.join(process.cwd(), "dist");
-          const assetsDir = path.join(distDir, "assets");
+          const serverDir = path.join(process.cwd(), ".output", "server");
 
-          let indexPath = path.join(distDir, "index.html");
-          if (!fs.existsSync(indexPath)) {
-            if (fs.existsSync(path.join(distDir, "200.html"))) {
-              fs.copyFileSync(path.join(distDir, "200.html"), indexPath);
-            } else if (fs.existsSync(path.join(distDir, "404.html"))) {
-              fs.copyFileSync(path.join(distDir, "404.html"), indexPath);
-            }
-          }
-
-          let jsFiles = [];
-          let cssFiles = [];
-
-          if (fs.existsSync(assetsDir)) {
-            const files = fs.readdirSync(assetsDir);
-            jsFiles = files.filter(f => f.endsWith(".js"));
-            cssFiles = files.filter(f => f.endsWith(".css"));
-          }
-
-          // Smart Entry Detection: find the script that initializes React/App root
-          let entryJs = "";
-          for (const f of jsFiles) {
-            const content = fs.readFileSync(path.join(assetsDir, f), "utf8");
-            if (content.includes("createRoot") || content.includes("hydrateRoot") || content.includes("ReactDOM") || content.includes("$Router") || content.includes("mount(")) {
-              entryJs = f;
-              break;
-            }
-          }
-
-          if (!entryJs) {
-            const priorityPatterns = [
-              f => f.startsWith("client") || f.startsWith("entry-client"),
-              f => f.startsWith("main"),
-              f => f.startsWith("entry"),
-              f => f.startsWith("app"),
-              f => f.startsWith("root"),
-              f => !f.startsWith("index-") && !f.startsWith("route-"),
-              f => true
-            ];
-            for (const pattern of priorityPatterns) {
-              const match = jsFiles.find(pattern);
-              if (match) { entryJs = match; break; }
-            }
-          }
-
-          const polyfillScript = `
+          const safeProxyCode = `
           <script>
             window.global = window;
             window.process = window.process || { env: { NODE_ENV: "production" } };
-            window.__VINXI__ = window.__VINXI__ || { assets: {} };
-            window.__manifest__ = window.__manifest__ || {};
-            window.__TSR__ = window.__TSR__ || {};
-            window.__TSR_ROUTER__ = window.__TSR_ROUTER__ || {};
-            window.__TSR_DEHYDRATED__ = window.__TSR_DEHYDRATED__ || {};
-            window.__nitro__ = window.__nitro__ || {};
-            window.$fetch = window.$fetch || function() { return Promise.resolve({}); };
+            
+            function createRecursiveProxy() {
+              const dummy = function() {};
+              return new Proxy(dummy, {
+                get(target, prop) {
+                  if (prop in target) return target[prop];
+                  if (typeof prop === "symbol" || prop === "then" || prop === "toJSON") return undefined;
+                  target[prop] = createRecursiveProxy();
+                  return target[prop];
+                },
+                set(target, prop, val) {
+                  target[prop] = val;
+                  return true;
+                }
+              });
+            }
 
-            window.addEventListener("error", function(e) {
-              var d = document.createElement("div");
-              d.style.cssText = "position:fixed;top:0;left:0;width:100%;height:100%;z-index:99999;background:#111;color:#ff5555;padding:20px;font-family:monospace;font-size:12px;overflow:scroll;white-space:pre-wrap;word-break:break-all;";
-              d.innerText = "APP RUNTIME ERROR:\\n" + e.message + "\\n\\nFile: " + e.filename + ":" + e.lineno + "\\n\\nStack:\\n" + (e.error ? e.error.stack : "N/A");
-              document.body.appendChild(d);
-            });
-            window.addEventListener("unhandledrejection", function(e) {
-              var d = document.createElement("div");
-              d.style.cssText = "position:fixed;top:0;left:0;width:100%;height:100%;z-index:99999;background:#111;color:#ff5555;padding:20px;font-family:monospace;font-size:12px;overflow:scroll;white-space:pre-wrap;word-break:break-all;";
-              d.innerText = "UNHANDLED PROMISE REJECTION:\\n" + (e.reason ? (e.reason.stack || e.reason) : e);
-              document.body.appendChild(d);
+            const globalsToProtect = [
+              "__VINXI__", "__TSR__", "__TSR_ROUTER__", "__TSR_DEHYDRATED__", 
+              "__manifest__", "__nitro__", "$fetch", "router"
+            ];
+
+            globalsToProtect.forEach(g => {
+              if (!window[g]) window[g] = createRecursiveProxy();
             });
           </script>
           `;
 
-          if (fs.existsSync(indexPath)) {
-            let html = fs.readFileSync(indexPath, "utf8");
-            if (html.includes("<head>")) {
-              html = html.replace("<head>", "<head>" + polyfillScript);
-            } else {
-              html = polyfillScript + html;
+          async function buildApp() {
+            let serverFile = "";
+            if (fs.existsSync(serverDir)) {
+              const files = fs.readdirSync(serverDir);
+              serverFile = files.find(f => f === "index.mjs" || f === "nitro.mjs" || f === "server.mjs") || files.find(f => f.endsWith(".mjs"));
             }
-            fs.writeFileSync(indexPath, html);
-          } else {
-            const jsTag = entryJs ? `<script type="module" src="./assets/${entryJs}"></script>` : "";
-            const cssTags = cssFiles.map(f => `<link rel="stylesheet" href="./assets/${f}">`).join("\n    ");
 
-            const htmlContent = `<!DOCTYPE html>
-          <html lang="en">
-            <head>
-              <meta charset="UTF-8" />
-              <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-              <title>Town Square</title>
-              ${cssTags}
-              ${polyfillScript}
-            </head>
-            <body>
-              <div id="root"></div>
-              <div id="app"></div>
-              ${jsTag}
-            </body>
-          </html>`;
+            let capturedHtml = "";
 
-            fs.writeFileSync(indexPath, htmlContent);
+            if (serverFile) {
+              const serverPath = path.join(serverDir, serverFile);
+              console.log("Found server entry:", serverPath);
+              const PORT = 3456;
+              const proc = spawn("node", [serverPath], {
+                env: { ...process.env, PORT: PORT, HOST: "127.0.0.1" },
+                stdio: "ignore"
+              });
+
+              await new Promise(r => setTimeout(r, 3500));
+
+              await new Promise((resolve) => {
+                http.get(`http://127.0.0.1:${PORT}/`, (res) => {
+                  let html = "";
+                  res.on("data", chunk => html += chunk);
+                  res.on("end", () => {
+                    if (html && html.includes("<html")) {
+                      capturedHtml = html;
+                      console.log("Successfully captured SSR rendered HTML!");
+                    }
+                    proc.kill();
+                    resolve();
+                  });
+                }).on("error", (err) => {
+                  console.log("Local server fetch error:", err.message);
+                  proc.kill();
+                  resolve();
+                });
+              });
+            }
+
+            let indexPath = path.join(distDir, "index.html");
+
+            if (capturedHtml) {
+              if (capturedHtml.includes("<head>")) {
+                capturedHtml = capturedHtml.replace("<head>", "<head>" + safeProxyCode);
+              } else {
+                capturedHtml = safeProxyCode + capturedHtml;
+              }
+              fs.writeFileSync(indexPath, capturedHtml);
+            } else if (fs.existsSync(indexPath)) {
+              let html = fs.readFileSync(indexPath, "utf8");
+              if (html.includes("<head>")) {
+                html = html.replace("<head>", "<head>" + safeProxyCode);
+              } else {
+                html = safeProxyCode + html;
+              }
+              fs.writeFileSync(indexPath, html);
+            }
           }
+
+          buildApp();
           '
 
           cat << EOF > capacitor.config.json
