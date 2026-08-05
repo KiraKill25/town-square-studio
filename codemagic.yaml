@@ -14,18 +14,6 @@ workflows:
           git checkout -- . || true
           npm run build || true
           node prepare-dist.js
-
-          cat << EOF > capacitor.config.json
-          {
-            "appId": "com.townsquare.app",
-            "appName": "Town Square",
-            "webDir": "dist",
-            "server": {
-              "androidScheme": "https"
-            }
-          }
-          EOF
-
           npx cap add android || true
           npx cap sync android
       - name: STEP 3 - Assemble APK
