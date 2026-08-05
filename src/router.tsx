@@ -5,21 +5,22 @@ import { routeTree } from "./routeTree.gen";
 export const getRouter = () => {
   const queryClient = new QueryClient();
 
-  // Detect if running inside Capacitor or offline webview environment
-  const isOfflineWebview =
+  // Force Hash History inside Capacitor/Android APK environments
+  const isMobileApp =
     typeof window !== "undefined" &&
     (window.location.protocol === "capacitor:" ||
       window.location.protocol === "file:" ||
-      window.location.pathname.includes("index.html") ||
-      typeof (window as any).Capacitor !== "undefined");
+      window.location.hostname === "localhost" ||
+      window.location.href.includes("index.html") ||
+      navigator.userAgent.includes("Capacitor") ||
+      navigator.userAgent.includes("Android"));
 
   const router = createRouter({
     routeTree,
     context: { queryClient },
     scrollRestoration: true,
     defaultPreloadStaleTime: 0,
-    // Use Hash History inside Capacitor so routes match '#/' instead of failing on '/index.html'
-    history: isOfflineWebview ? createHashHistory() : undefined,
+    history: isMobileApp ? createHashHistory() : undefined,
   });
 
   return router;
