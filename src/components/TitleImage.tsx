@@ -1,7 +1,7 @@
 import { motion } from "framer-motion";
 
 const TEXT = "Mourad's Ville";
-const TITLE_URL = "/media/title-mourads-ville.png";
+const TITLE_URL = "./media/title-mourads-ville.png";
 
 const IMG =
   "absolute top-0 left-0 block w-full mix-blend-screen pointer-events-none";
@@ -27,6 +27,10 @@ export function TitleImage() {
           height={1243}
           className={IMG}
           style={OFFSET}
+          onError={(e) => {
+            // Fallback path attempt if static asset relative prefix varies
+            (e.currentTarget as HTMLImageElement).src = "/media/title-mourads-ville.png";
+          }}
         />
         {/* Halo néon pulsé — uniquement autour de « MOURAD'S » */}
         <motion.img
