@@ -29,12 +29,24 @@ function Index() {
   const { t } = useI18n();
 
   useEffect(() => {
-    clearBgm();
+    try {
+      clearBgm();
+    } catch (e) {
+      console.warn("Audio clear warning:", e);
+    }
   }, []);
+
+  const handleUnlockAudio = () => {
+    try {
+      unlockAudio();
+    } catch (e) {
+      console.warn("Audio unlock warning:", e);
+    }
+  };
 
   return (
     <main
-      onPointerDown={unlockAudio}
+      onPointerDown={handleUnlockAudio}
       className="flex min-h-screen flex-col items-center gap-7 px-5 pt-20 pb-12"
     >
       <header className="fixed inset-x-0 top-0 z-40 flex items-center justify-end gap-3 px-4 py-3">
@@ -49,11 +61,15 @@ function Index() {
       <TitleImage />
       <p className="-mt-2 text-sm text-muted-foreground">{t("tagline")}</p>
 
-
       <div className="flex w-full max-w-xs flex-col gap-3">
         <Link
           to="/setup"
-          onClick={() => { unlockAudio(); startBgm("LOBBY"); }}
+          onClick={() => {
+            try {
+              unlockAudio();
+              startBgm("LOBBY");
+            } catch (e) {}
+          }}
           className="gradient-neon rounded-full px-6 py-4 text-center font-black text-primary-foreground transition hover:shadow-[0_0_30px_oklch(0.589_0.239_359.7/0.6)]"
         >
           {t("newGame")}
