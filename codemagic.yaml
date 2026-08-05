@@ -13,7 +13,7 @@ workflows:
         script: |
           npm run build || true
 
-          cat << 'EOF' > prepare-dist.js
+          cat << 'EOF' > prepare-dist.cjs
           const fs = require("fs");
           const path = require("path");
 
@@ -107,7 +107,7 @@ workflows:
           fs.writeFileSync(path.join(distDir, "index.html"), htmlContent);
           EOF
 
-          node prepare-dist.js
+          node prepare-dist.cjs
 
           cat << EOF > capacitor.config.json
           {
