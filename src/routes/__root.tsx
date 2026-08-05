@@ -40,7 +40,11 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
   console.error(error);
   const router = useRouter();
   useEffect(() => {
-    reportLovableError(error, { boundary: "tanstack_root_error_component" });
+    try {
+      reportLovableError(error, { boundary: "tanstack_root_error_component" });
+    } catch (e) {
+      console.warn("Error reporting warning:", e);
+    }
   }, [error]);
 
   return (
@@ -111,6 +115,11 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 });
 
 function RootShell({ children }: { children: ReactNode }) {
+  // Prevent rendering <html> or <body> tags inside client-side #root element:
+  if (typeof window !== "undefined") {
+    return <>{children}</>;
+  }
+
   return (
     <html lang="fr">
       <head>
@@ -128,7 +137,11 @@ function RootComponent() {
   const { queryClient } = Route.useRouteContext();
 
   useEffect(() => {
-    initAudioPrefs();
+    try {
+      initAudioPrefs();
+    } catch (e) {
+      console.warn("Audio init warning:", e);
+    }
   }, []);
 
   return (
@@ -136,7 +149,6 @@ function RootComponent() {
       <I18nProvider>
         <LandscapeNotice />
         <div className="landscape-hide">
-          {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
           <Outlet />
         </div>
       </I18nProvider>
