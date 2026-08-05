@@ -44,6 +44,7 @@ export function NarratorCard({
   };
 
   return (
+    <>
     <div className="surface-card animate-rise-in neon-ring overflow-hidden rounded-3xl">
       <div className="relative aspect-[16/10] overflow-hidden">
         <video
@@ -57,14 +58,37 @@ export function NarratorCard({
           className="h-full w-full cursor-pointer object-cover object-top"
         />
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-card via-card/80 to-transparent" />
+        <button
+          type="button"
+          title={guideLabel}
+          aria-label={guideLabel}
+          onClick={(e) => {
+            e.stopPropagation();
+            setGuide(true);
+          }}
+          className="animate-pulse-glow absolute top-3 right-3 grid size-9 place-items-center rounded-full bg-primary/20 text-primary backdrop-blur transition hover:bg-primary hover:text-primary-foreground"
+        >
+          <Info className="size-4" />
+        </button>
         <p className="pointer-events-none absolute bottom-3 left-4 text-xs font-bold tracking-[0.3em] text-primary uppercase">
           {title}
         </p>
       </div>
       <div className="space-y-4 p-5">
         <p className="text-base leading-relaxed">{text}</p>
+        <button
+          type="button"
+          onClick={() => setGuide(true)}
+          className="glass-neon-btn flex w-full items-center justify-center gap-2 rounded-full px-5 py-3 text-sm font-semibold text-foreground"
+        >
+          <Info className="size-4 text-gold" />
+          {guideLabel}
+        </button>
         {children}
       </div>
     </div>
+    {guide && <HowToPlayModal onClose={() => setGuide(false)} />}
+    </>
   );
 }
+
