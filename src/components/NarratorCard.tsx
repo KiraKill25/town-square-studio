@@ -1,6 +1,11 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import { Info } from "lucide-react";
+import { HowToPlayModal } from "@/components/HowToPlayModal";
+import { HOWTO } from "@/lib/howto";
+import { useI18n } from "@/lib/i18n";
 
 const VIDEO_URL = "/media/game-master.mp4";
+
 
 export function NarratorCard({
   title = "Le Meneur du Jeu",
