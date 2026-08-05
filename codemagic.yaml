@@ -11,40 +11,7 @@ workflows:
         script: npm install --legacy-peer-deps
       - name: STEP 2 - Build Web App & Capacitor Sync
         script: |
-          # Restore modified config files from previous run
           git checkout -- . || true
-
-          cat << 'EOF' > enable-spa.cjs
-          const fs = require("fs");
-          const path = require("path");
-
-          // Target ONLY TanStack Start configs, leaving vite.config.ts untouched
-          const appConfigFiles = ["app.config.ts", "app.config.js", "app.config.mjs"];
-          let patched = false;
-
-          for (const file of appConfigFiles) {
-            const filePath = path.join(process.cwd(), file);
-            if (fs.existsSync(filePath)) {
-              let content = fs.readFileSync(filePath, "utf8");
-              if (!content.includes("ssr: false")) {
-                console.log(`Patching ${file} for SPA mode...`);
-                content = content.replace(/defineConfig\s*\(\s*\{/, "defineConfig({\n  ssr: false,");
-                fs.writeFileSync(filePath, content);
-                console.log(`Successfully patched ${file}`);
-              } else {
-                console.log(`${file} already has ssr: false.`);
-              }
-              patched = true;
-              break;
-            }
-          }
-
-          if (!patched) {
-            console.log("No app.config found. Keeping default setup.");
-          }
-          EOF
-
-          node enable-spa.cjs
 
           npm run build || true
 
@@ -62,13 +29,13 @@ workflows:
 
           const buildAssets = path.join(distDir, "_build", "assets");
           const assetsDir = path.join(distDir, "assets");
+          fs.mkdirSync(assetsDir, { recursive: true });
+          fs.mkdirSync(buildAssets, { recursive: true });
+
           if (fs.existsSync(buildAssets)) {
-            fs.mkdirSync(assetsDir, { recursive: true });
             fs.cpSync(buildAssets, assetsDir, { recursive: true });
           }
-
           if (fs.existsSync(assetsDir)) {
-            fs.mkdirSync(buildAssets, { recursive: true });
             fs.cpSync(assetsDir, buildAssets, { recursive: true });
           }
 
@@ -81,7 +48,7 @@ workflows:
             }
           }
 
-          if (!fs.existsSync(indexPath) && fs.existsSync(assetsDir)) {
+          if (!fs.existsSync(indexPath)) {
             const files = fs.readdirSync(assetsDir);
             const jsFiles = files.filter(f => f.endsWith(".js"));
             const cssFiles = files.filter(f => f.endsWith(".css"));
@@ -111,32 +78,80 @@ workflows:
             fs.writeFileSync(indexPath, fallbackHtml);
           }
 
-          if (fs.existsSync(indexPath)) {
-            let html = fs.readFileSync(indexPath, "utf8");
-            const patchScript = `
-            <script>
-              if (window.location.pathname.endsWith('/index.html') || window.location.pathname.endsWith('index.html')) {
-                window.history.replaceState(null, '', '/');
-              }
-              window.global = window;
-              window.process = window.process || { env: { NODE_ENV: "production" } };
-              window.__VINXI__ = window.__VINXI__ || { assets: {} };
-              window.__manifest__ = window.__manifest__ || {};
-              window.__TSR__ = window.__TSR__ || {};
-              window.__TSR_ROUTER__ = window.__TSR_ROUTER__ || {};
-              window.__TSR_DEHYDRATED__ = window.__TSR_DEHYDRATED__ || {};
-              window.__nitro__ = window.__nitro__ || {};
-              window.$fetch = window.$fetch || function() { return Promise.resolve({}); };
-            </script>
-            `;
-            if (html.includes("<head>")) {
-              html = html.replace("<head>", "<head>" + patchScript);
-            } else {
-              html = patchScript + html;
+          let html = fs.readFileSync(indexPath, "utf8");
+
+          // Convert absolute paths to relative paths for Capacitor webview
+          html = html.replace(/src="\/_build\//g, 'src="./_build/')
+                    .replace(/href="\/_build\//g, 'href="./_build/')
+                    .replace(/src="\/assets\//g, 'src="./assets/')
+                    .replace(/href="\/assets\//g, 'href="./assets/');
+
+          const diagnosticScript = `
+          <script>
+            if (window.location.pathname.endsWith('/index.html') || window.location.pathname.endsWith('index.html')) {
+              window.history.replaceState(null, '', '/');
             }
-            fs.writeFileSync(indexPath, html);
-            console.log("Successfully prepared dist/index.html!");
+
+            window.global = window;
+            window.process = window.process || { env: { NODE_ENV: "production" } };
+            window.__VINXI__ = window.__VINXI__ || { assets: {} };
+            window.__manifest__ = window.__manifest__ || {};
+            window.__TSR__ = window.__TSR__ || {};
+            window.__TSR_ROUTER__ = window.__TSR_ROUTER__ || {};
+            window.__TSR_DEHYDRATED__ = window.__TSR_DEHYDRATED__ || {};
+            window.__nitro__ = window.__nitro__ || {};
+
+            var origFetch = window.fetch;
+            if (origFetch) {
+              window.fetch = function() {
+                return origFetch.apply(this, arguments).catch(function(err) {
+                  console.warn('[Fetch Warning]', err);
+                  return new Response(JSON.stringify({}), { status: 200, headers: { 'Content-Type': 'application/json' } });
+                });
+              };
+            }
+
+            function showOverlayError(title, message) {
+              var d = document.getElementById("debug-error-overlay");
+              if (!d) {
+                d = document.createElement("div");
+                d.id = "debug-error-overlay";
+                d.style.cssText = "position:fixed;top:0;left:0;width:100%;height:100%;z-index:99999;background:#111;color:#ff5555;padding:16px;font-family:monospace;font-size:11px;overflow:scroll;white-space:pre-wrap;word-break:break-all;";
+                document.body.appendChild(d);
+              }
+              d.innerText += "\\n[" + title + "]\\n" + message + "\\n";
+            }
+
+            window.addEventListener("error", function(e) {
+              showOverlayError("APP RUNTIME ERROR", e.message + "\\nFile: " + e.filename + ":" + e.lineno + "\\n" + (e.error ? e.error.stack : ""));
+            });
+
+            window.addEventListener("unhandledrejection", function(e) {
+              var reason = e.reason ? (e.reason.stack || e.reason) : e;
+              showOverlayError("UNHANDLED REJECTION", reason);
+            });
+
+            var origConsoleError = console.error;
+            console.error = function() {
+              origConsoleError.apply(console, arguments);
+              var msg = Array.prototype.slice.call(arguments).map(function(a) {
+                return typeof a === "object" ? JSON.stringify(a) : a;
+              }).join(" ");
+              if (!msg.includes("Warning:") && !msg.includes("React DevTools")) {
+                showOverlayError("CONSOLE ERROR", msg);
+              }
+            };
+          </script>
+          `;
+
+          if (html.includes("<head>")) {
+            html = html.replace("<head>", "<head>" + diagnosticScript);
+          } else {
+            html = diagnosticScript + html;
           }
+
+          fs.writeFileSync(indexPath, html);
+          console.log("Successfully prepared dist/index.html!");
           EOF
 
           node prepare-dist.cjs
