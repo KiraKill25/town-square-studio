@@ -4,17 +4,19 @@ workflows:
     max_build_duration: 30
     instance_type: mac_mini_m1
     scripts:
-      - name: Install dependencies
-        script: npm install
-      - name: Build web app
+      - name: STEP 1 - Install Dependencies
+        script: npm install --legacy-peer-deps
+      - name: STEP 2 - Build Web App
         script: npm run build
-      - name: Capacitor Android Sync
+      - name: STEP 3 - Sync Android
         script: |
-          npx cap add android || true
-          npx cap sync android
-      - name: Build APK with Gradle
+          ./node_modules/.bin/cap init "Town Square" "com.townsquare.app" --web-dir "dist" || true
+          ./node_modules/.bin/cap add android || true
+          ./node_modules/.bin/cap sync android
+      - name: STEP 4 - Assemble APK
         script: |
           cd android
+          chmod +x gradlew
           ./gradlew assembleDebug
     artifacts:
       - android/app/build/outputs/apk/**/*.apk
