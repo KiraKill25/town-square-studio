@@ -1,8 +1,12 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { RouterProvider } from "@tanstack/react-router";
+import { StatusBar } from "@capacitor/status-bar";
 import { getRouter } from "./router";
 import "./styles.css";
+
+// Hide the Android status bar for full-screen mode
+StatusBar.hide().catch(() => {});
 
 const router = getRouter();
 
