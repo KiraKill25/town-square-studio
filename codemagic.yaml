@@ -6,12 +6,10 @@ workflows:
     environment:
       java: 21
       node: 22
-      vars:
-        NODE_ENV: development
     scripts:
       - name: STEP 1 - Install Dependencies
-        script: npm install --legacy-peer-deps --include=dev
-      - name: STEP 2 - Build App & Prepare Capacitor Assets
+        script: npm install --production=false --legacy-peer-deps
+      - name: STEP 2 - Build Assets & Sync Capacitor
         script: |
           npm run build || true
           node prepare-dist.cjs
