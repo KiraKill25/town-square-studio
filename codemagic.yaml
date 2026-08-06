@@ -14,7 +14,6 @@ workflows:
           git checkout -- . || true
           npm run build || true
           node prepare-dist.cjs
-          npx cap add android || true
           npx cap sync android
       - name: STEP 3 - Assemble APK
         script: |
