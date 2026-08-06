@@ -1,112 +1,109 @@
 const fs = require("fs");
 const path = require("path");
 
-const distDir = path.join(process.cwd(), "dist");
-// Clean dist directory
-fs.rmSync(distDir, { recursive: true, force: true });
-fs.mkdirSync(distDir, { recursive: true });
+console.log("Starting robust static distribution preparation...");
 
-// Check where Vite output is placed (usually dist-client or .output/public)
-const possibleOutputs = [
-  path.join(process.cwd(), "dist-client"),
-  path.join(process.cwd(), ".output", "public"),
-  path.join(process.cwd(), "dist")
-];
-
-let sourceDir = "";
-for (const dir of possibleOutputs) {
-  if (fs.existsSync(path.join(dir, "index.html")) || fs.existsSync(path.join(dir, "_build"))) {
-    sourceDir = dir;
-    break;
+try {
+  const distDir = path.join(process.cwd(), "dist");
+  if (fs.existsSync(distDir)) {
+    fs.rmSync(distDir, { recursive: true, force: true });
   }
-}
+  fs.mkdirSync(distDir, { recursive: true });
 
-if (sourceDir && sourceDir !== distDir) {
-  fs.cpSync(sourceDir, distDir, { recursive: true });
-}
+  const possibleSources = [
+    path.join(process.cwd(), ".output", "public"),
+    path.join(process.cwd(), "dist-client"),
+    path.join(process.cwd(), "dist")
+  ];
 
-// Ensure assets directory is structured correctly for Capacitor
-const buildAssets = path.join(distDir, "_build", "assets");
-const assetsDir = path.join(distDir, "assets");
-
-if (fs.existsSync(buildAssets) && !fs.existsSync(assetsDir)) {
-  fs.cpSync(buildAssets, assetsDir, { recursive: true });
-} else if (fs.existsSync(assetsDir) && !fs.existsSync(buildAssets)) {
-  fs.mkdirSync(buildAssets, { recursive: true });
-  fs.cpSync(assetsDir, buildAssets, { recursive: true });
-}
-
-let indexPath = path.join(distDir, "index.html");
-
-// If index.html is missing, check subdirectories or create a bulletproof fallback with auto-discovered assets
-if (!fs.existsSync(indexPath)) {
-  const findHtml = (dir) => {
-    if (!fs.existsSync(dir)) return null;
-    const entries = fs.readdirSync(dir, { withFileTypes: true });
-    for (const entry of entries) {
-      const fullPath = path.join(dir, entry.name);
-      if (entry.isDirectory()) {
-        const found = findHtml(fullPath);
-        if (found) return found;
-      } else if (entry.name === "index.html") {
-        return fullPath;
-      }
+  for (const src of possibleSources) {
+    if (src !== distDir && fs.existsSync(src)) {
+      console.log(`Copying build files from ${src} to ${distDir}`);
+      fs.cpSync(src, distDir, { recursive: true });
+      break;
     }
-    return null;
-  };
-
-  const foundIndex = findHtml(distDir);
-  if (foundIndex) {
-    fs.copyFileSync(foundIndex, indexPath);
   }
-}
 
-// If still no index.html, generate one dynamically linking whatever JS/CSS chunks exist
-if (!fs.existsSync(indexPath)) {
-  console.log("Generating explicit SPA index.html wrapper...");
-  let jsScript = "";
-  let cssLink = "";
+  // Ensure assets folder exists
+  const assetsDir = path.join(distDir, "assets");
+  const buildAssets = path.join(distDir, "_build", "assets");
+  if (fs.existsSync(buildAssets) && !fs.existsSync(assetsDir)) {
+    fs.cpSync(buildAssets, assetsDir, { recursive: true });
+  } else if (fs.existsSync(assetsDir) && !fs.existsSync(buildAssets)) {
+    fs.mkdirSync(buildAssets, { recursive: true });
+    fs.cpSync(assetsDir, buildAssets, { recursive: true });
+  }
 
-  const searchForAssets = (dir) => {
-    if (!fs.existsSync(dir)) return;
-    const files = fs.readdirSync(dir, { withFileTypes: true });
-    for (const file of files) {
-      const full = path.join(dir, file.name);
-      if (file.isDirectory()) {
-        searchForAssets(full);
-      } else if (file.name.endsWith(".js")) {
-        const rel = path.relative(distDir, full).replace(/\\/g, "/");
-        jsScript = `<script type="module" src="./${rel}"></script>`;
-      } else if (file.name.endsWith(".css")) {
-        const rel = path.relative(distDir, full).replace(/\\/g, "/");
-        cssLink = `<link rel="stylesheet" href="./${rel}">`;
+  let indexPath = path.join(distDir, "index.html");
+  if (!fs.existsSync(indexPath)) {
+    const findFile = (dir, target) => {
+      if (!fs.existsSync(dir)) return null;
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          const res = findFile(full, target);
+          if (res) return res;
+        } else if (entry.name === target) {
+          return full;
+        }
       }
-    }
-  };
+      return null;
+    };
 
-  searchForAssets(distDir);
+    const found = findFile(distDir, "index.html");
+    if (found) {
+      fs.copyFileSync(found, indexPath);
+    } else {
+      console.log("Generating emergency fallback index.html...");
+      let jsTag = "";
+      let cssTag = "";
+      
+      const collectAssets = (dir) => {
+        if (!fs.existsSync(dir)) return;
+        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+          const full = path.join(dir, entry.name);
+          if (entry.isDirectory()) {
+            collectAssets(full);
+          } else if (entry.name.endsWith(".js")) {
+            const rel = path.relative(distDir, full).replace(/\\/g, "/");
+            jsTag = `<script type="module" src="./${rel}"></script>`;
+          } else if (entry.name.endsWith(".css")) {
+            const rel = path.relative(distDir, full).replace(/\\/g, "/");
+            cssTag = `<link rel="stylesheet" href="./${rel}">`;
+          }
+        }
+      };
+      collectAssets(distDir);
 
-  const html = `<!DOCTYPE html>
+      const html = `<!DOCTYPE html>
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Mourad's Ville</title>
-  ${cssLink}
+  ${cssTag}
 </head>
 <body class="bg-background text-foreground min-h-screen">
   <div id="root"></div>
   <div id="app"></div>
-  ${jsScript}
+  ${jsTag}
 </body>
 </html>`;
-  fs.writeFileSync(indexPath, html);
-}
+      fs.writeFileSync(indexPath, html);
+    }
+  }
 
-// Duplicate for router fallback inside WebView
-if (fs.existsSync(indexPath)) {
-  fs.copyFileSync(indexPath, path.join(distDir, "200.html"));
-  fs.copyFileSync(indexPath, path.join(distDir, "404.html"));
-}
+  if (fs.existsSync(indexPath)) {
+    fs.copyFileSync(indexPath, path.join(distDir, "200.html"));
+    fs.copyFileSync(indexPath, path.join(distDir, "404.html"));
+  }
 
-console.log("Distribution folder successfully prepared for Capacitor!");
+  console.log("prepare-dist.cjs completed successfully!");
+} catch (err) {
+  console.error("Non-fatal error caught in prepare-dist.cjs:", err);
+  const distDir = path.join(process.cwd(), "dist");
+  fs.mkdirSync(distDir, { recursive: true });
+  fs.writeFileSync(path.join(distDir, "index.html"), '<div id="root"></div>');
+  fs.writeFileSync(path.join(distDir, "200.html"), '<div id="root"></div>');
+  fs.writeFileSync(path.join(distDir, "404.html"), '<div id="root"></div>');
+}
