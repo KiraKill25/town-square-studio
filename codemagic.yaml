@@ -9,10 +9,10 @@ workflows:
     scripts:
       - name: STEP 1 - Install Dependencies
         script: npm install --legacy-peer-deps
-      - name: STEP 2 - Build & Prepare Static SPA Assets
+      - name: STEP 2 - Build Static App & Prepare Assets
         script: |
           git checkout -- . || true
-          npm run build || true
+          npm run build
           node prepare-dist.cjs
           npx cap add android || true
           npx cap sync android
