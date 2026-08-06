@@ -9,7 +9,7 @@ workflows:
     scripts:
       - name: STEP 1 - Install Dependencies
         script: npm install --legacy-peer-deps
-      - name: STEP 2 - Build Static App & Prepare Assets
+      - name: STEP 2 - Build SPA & Sync Capacitor
         script: |
           git checkout -- . || true
           npm run build
