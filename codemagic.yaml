@@ -12,12 +12,15 @@ workflows:
           export NODE_ENV=development
           npm install --legacy-peer-deps
           npm install -D @capacitor/assets
-      - name: STEP 2 - Build SPA & Generate App Icons
+      - name: STEP 2 - Build SPA & Generate App Icons & Splash Screen
         script: |
           export NODE_ENV=development
           npx vite build
+          mkdir -p assets
+          cp icon.png assets/icon.png 2>/dev/null || true
+          cp icon.png assets/splash.png 2>/dev/null || true
           npx cap add android || true
-          npx @capacitor/assets generate --android || true
+          npx @capacitor/assets generate --android --iconBackgroundColor "#000000" --splashBackgroundColor "#000000" || true
           npx cap sync android
       - name: STEP 3 - Assemble APK
         script: |
