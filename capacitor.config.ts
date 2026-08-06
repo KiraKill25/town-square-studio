@@ -2,7 +2,7 @@ import type { CapacitorConfig } from "@capacitor/cli";
 
 const config: CapacitorConfig = {
   appId: "com.townsquare.app",
-  appName: "Town Square",
+  appName: "Mourad's Ville",
   webDir: "dist",
   server: {
     androidScheme: "https",
