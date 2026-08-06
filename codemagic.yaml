@@ -11,11 +11,13 @@ workflows:
         script: |
           export NODE_ENV=development
           npm install --legacy-peer-deps
-      - name: STEP 2 - Build SPA & Sync Capacitor
+          npm install -D @capacitor/assets
+      - name: STEP 2 - Build SPA & Generate App Icons
         script: |
           export NODE_ENV=development
           npx vite build
           npx cap add android || true
+          npx @capacitor/assets generate --android || true
           npx cap sync android
       - name: STEP 3 - Assemble APK
         script: |
