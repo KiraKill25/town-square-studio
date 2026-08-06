@@ -8,10 +8,13 @@ workflows:
       node: 22
     scripts:
       - name: STEP 1 - Install Dependencies
-        script: npm install --production=false --legacy-peer-deps
+        script: |
+          export NODE_ENV=development
+          npm install --legacy-peer-deps
       - name: STEP 2 - Build Assets & Sync Capacitor
         script: |
-          npm run build || true
+          export NODE_ENV=development
+          npx vite build || true
           node prepare-dist.cjs
           npx cap add android || true
           npx cap sync android
