@@ -7,14 +7,14 @@ import { KeepAwake } from "@capacitor-community/keep-awake";
 import { getRouter } from "./router";
 import "./styles.css";
 
+// Instantly dismiss Android native splash screen as soon as script starts
+SplashScreen.hide().catch(() => {});
+
 // Hide status bar for full-screen mode
 StatusBar.hide().catch(() => {});
 
 // Keep screen awake while app is open
 KeepAwake.keepAwake().catch(() => {});
-
-// Instantly hide native splash to avoid Android shrinking issues
-SplashScreen.hide().catch(() => {});
 
 function AppWithFullScreenSplash() {
   const [showSplash, setShowSplash] = useState(true);
