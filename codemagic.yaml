@@ -12,9 +12,11 @@ workflows:
           export NODE_ENV=development
           npm install --legacy-peer-deps
           npm install -D @capacitor/assets
-      - name: STEP 2 - Build SPA & Generate Centered App Icons & Splash Screen
+      - name: STEP 2 - Build SPA & Prepare Assets
         script: |
           export NODE_ENV=development
+          mkdir -p public
+          cp icon.png public/icon.png 2>/dev/null || true
           npx vite build
           mkdir -p assets
           cp icon.png assets/icon.png 2>/dev/null || true
